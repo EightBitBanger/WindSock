@@ -15,8 +15,6 @@
 //#include <winsock2.h>
 #include <WS2tcpip.h>
 
-#define SERVER_PORT  54000
-#define SERVER_ADDR  "127.0.0.1"
 
 
 
@@ -28,13 +26,16 @@ public:
     WindSock(void);
     ~WindSock(void);
     
-    
-    
-    
-    void startListen(void);
-    
     void setAddress(std::string newAddress) {address = newAddress;}
     void setPort(unsigned int newPort)      {port = newPort;}
+    
+    
+    /// Start a server listening for incoming connections.
+    void startServerListener(void);
+    
+    /// Connect to a server who is listening incoming connections.
+    void connectToServer(void);
+    
     
     std::string  getAddress(void) {return address;}
     unsigned int getPort(void)    {return port;}
@@ -77,12 +78,12 @@ WindSock::~WindSock(void) {
     WSACleanup();
 }
 
-void WindSock::startListen(void) {
+void WindSock::startServerListener(void) {
     
     // Bind to an IP address and a PORT
     sockaddr_in hint;
     hint.sin_family = AF_INET;
-    hint.sin_port = htons(SERVER_PORT);
+    hint.sin_port = htons(port);
     hint.sin_addr.S_un.S_addr = INADDR_ANY;
     
     bind(mSocket, (sockaddr*)&hint, sizeof(hint));
@@ -92,7 +93,7 @@ void WindSock::startListen(void) {
     sockaddr_in client;
     int clientSz = sizeof(client);
     
-    std::cout << "Listening on port: " << SERVER_PORT << std::endl << std::endl;
+    std::cout << "Listening on port: " << port << std::endl << std::endl;
     
     while(true) {
         // Listen for a connection
@@ -108,12 +109,30 @@ void WindSock::startListen(void) {
         
         std::cout << "Connected" << std::endl;
         std::cout << host << std::endl;
-        std::cout << service << std::endl;
+        std::cout << service << std::endl << std::endl;
     }
+}
+
+void WindSock::connectToServer(void) {
+    
+    // Bind to an IP address and a PORT
+    sockaddr_in hint;
+    hint.sin_family = AF_INET;
+    hint.sin_port = htons(port);
+    unsigned long uipAddr = inet_addr(address.c_str());
+    hint.sin_addr = (in_addr&)uipAddr;
+    
+    // Connect to the server
+    /*int connectResult = */connect(mSocket, (sockaddr*)&hint, sizeof(hint));
+    //if (connectResult) 
+    
 }
 
 
 
+
+
+/*
 
 
 
@@ -144,7 +163,7 @@ void initiateServer(void) {
     // Bind to an IP address and a PORT
     sockaddr_in hint;
     hint.sin_family = AF_INET;
-    hint.sin_port = htons(SERVER_PORT);
+    hint.sin_port = htons(57000);
     hint.sin_addr.S_un.S_addr = INADDR_ANY;
     
     bind(listener, (sockaddr*)&hint, sizeof(hint));
@@ -154,7 +173,7 @@ void initiateServer(void) {
     sockaddr_in client;
     int clientSz = sizeof(client);
     
-    std::cout << "Listening on port: " << SERVER_PORT << std::endl << std::endl;
+    std::cout << "Listening on port: " << 57000 << std::endl << std::endl;
     
     // Listen for a connection
     SOCKET clientSocket = accept(listener, (sockaddr*)&client, &clientSz);
@@ -217,7 +236,6 @@ void initiateServer(void) {
 
 void initiateClient(void) {
     
-    std::string IPaddr = SERVER_ADDR;
     
     // Initiate winsock
     WSADATA wsData;
@@ -241,16 +259,17 @@ void initiateClient(void) {
     
     
     
+    std::string IPaddr = "127.0.0.1";
     
     // Bind to an IP address and a PORT
     sockaddr_in hint;
     hint.sin_family = AF_INET;
-    hint.sin_port = htons(SERVER_PORT);
+    hint.sin_port = htons(57000);
     unsigned long uipAddr = inet_addr(IPaddr.c_str());
     hint.sin_addr = (in_addr&)uipAddr;
     
     // Connect to the server
-    //int connectResult = connect(sock, (sockaddr*)&hint, sizeof(hint));
+    int connectResult = connect(sock, (sockaddr*)&hint, sizeof(hint));
     //if (connectResult) 
     
     // Close the client socket
@@ -261,5 +280,8 @@ void initiateClient(void) {
 }
 
 
+
+
+*/
 
 

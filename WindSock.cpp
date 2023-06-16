@@ -6,19 +6,15 @@ int main() {
     
     WindSock wSock;
     
-    wSock.setAddress("127.0.1.1");
-    wSock.setPort(27000);
+    wSock.setAddress("127.0.0.1");
+    wSock.setPort(80);
     
-    wSock.startListen();
+    //wSock.startServerListener();
+    
+    wSock.connectToServer();
     
     
     
-    //initiateServer();
-    //initiateClient();
-    
-    std::cout << "complete" << std::endl << std::endl;
-    std::string test;
-    std::cin >> test;
     
     return 1;
 }
