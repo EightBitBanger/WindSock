@@ -1,2 +1,2 @@
-### Windows socket test
-Just playing around with TCP sockets
+### Winsock testing
+Windows TCP/IP sockets in C++ ... for fun ;)
