@@ -29,6 +29,11 @@ public:
     void setAddress(std::string newAddress) {address = newAddress;}
     void setPort(unsigned int newPort)      {port = newPort;}
     
+    std::string  getAddress(void) {return address;}
+    unsigned int getPort(void)    {return port;}
+    
+    
+    
     
     /// Start a server listening for incoming connections.
     void startServerListener(void);
@@ -36,13 +41,16 @@ public:
     /// Connect to a server who is listening incoming connections.
     void connectToServer(void);
     
+    /// Send a message
+    void messageSend(char* buffer, unsigned int bufferSize);
     
-    std::string  getAddress(void) {return address;}
-    unsigned int getPort(void)    {return port;}
+    /// Receive a message
+    int messageReceive(char* buffer, unsigned int bufferSize);
     
     
 private:
     
+    bool isActive;
     
     std::string address;
     unsigned int port;
@@ -52,7 +60,14 @@ private:
 };
 
 
-WindSock::WindSock(void) {
+WindSock::WindSock(void) :
+    
+    isActive(true),
+    address("127.0.0.1"),
+    port(75000),
+    
+    mSocket(0)
+{
     
     WSADATA wsData;
     WORD ver = MAKEWORD(2, 2);
@@ -95,7 +110,7 @@ void WindSock::startServerListener(void) {
     
     std::cout << "Listening on port: " << port << std::endl << std::endl;
     
-    while(true) {
+    while(isActive) {
         // Listen for a connection
         /*SOCKET clientSocket = */accept(mSocket, (sockaddr*)&client, &clientSz);
         
@@ -127,6 +142,20 @@ void WindSock::connectToServer(void) {
     //if (connectResult) 
     
 }
+
+void WindSock::messageSend(char* buffer, unsigned int bufferSize) {
+    send(mSocket, buffer, bufferSize + 1, 0);
+}
+
+int WindSock::messageReceive(char* buffer, unsigned int bufferSize) {
+    return recv(mSocket, buffer, bufferSize, 0);
+}
+
+
+
+
+
+
 
 
 
