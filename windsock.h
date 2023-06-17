@@ -18,7 +18,6 @@
 
 
 
-
 class WindSock {
     
 public:
@@ -26,45 +25,62 @@ public:
     WindSock(void);
     ~WindSock(void);
     
-    void setAddress(std::string newAddress) {address = newAddress;}
-    void setPort(unsigned int newPort)      {port = newPort;}
-    
-    std::string  getAddress(void) {return address;}
-    unsigned int getPort(void)    {return port;}
+    std::string  GetHost(void)    {return host;}
+    SOCKET       GetSocket(void)  {return mSocket;}
     
     
-    
+    // Server
+    //
     
     /// Start a server listening for incoming connections.
-    void startServerListener(void);
+    int InitiateServer(unsigned int portNumber);
     
-    /// Connect to a server who is listening incoming connections.
-    void connectToServer(void);
+    /// Check for an incoming connection request.
+    int CheckIncomingConnections(void);
+    
+    /// Check for incoming messages from any connected client.
+    int CheckIncomingMessages(char* buffer, unsigned int bufferSize);
+    
+    
+    // Client
+    //
+    
+    /// Connect to a server.
+    int ConnectToServer(std::string address, unsigned int port);
+    
+    /// Disconnect from a server.
+    int DisconnectFromServer(SOCKET socket);
+    
+    
+    // Messaging
+    //
     
     /// Send a message
-    void messageSend(char* buffer, unsigned int bufferSize);
+    void MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize);
     
     /// Receive a message
-    int messageReceive(char* buffer, unsigned int bufferSize);
+    int MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize);
     
     
 private:
     
-    bool isActive;
+    bool isConnected;
     
-    std::string address;
-    unsigned int port;
+    std::string host;
     
     SOCKET mSocket;
+    
+    std::vector<std::string> hostList;
+    std::vector<SOCKET>      socketList;
     
 };
 
 
 WindSock::WindSock(void) :
     
-    isActive(true),
-    address("127.0.0.1"),
-    port(75000),
+    isConnected(false),
+    
+    host(""),
     
     mSocket(0)
 {
@@ -82,7 +98,6 @@ WindSock::WindSock(void) :
         return;
     }
     
-    return;
 }
 
 WindSock::~WindSock(void) {
@@ -93,9 +108,8 @@ WindSock::~WindSock(void) {
     WSACleanup();
 }
 
-void WindSock::startServerListener(void) {
+int WindSock::InitiateServer(unsigned int port) {
     
-    // Bind to an IP address and a PORT
     sockaddr_in hint;
     hint.sin_family = AF_INET;
     hint.sin_port = htons(port);
@@ -104,31 +118,18 @@ void WindSock::startServerListener(void) {
     bind(mSocket, (sockaddr*)&hint, sizeof(hint));
     listen(mSocket, SOMAXCONN);
     
-    // Wait for a connection
-    sockaddr_in client;
-    int clientSz = sizeof(client);
+    // Non blocking socket
+    u_long sockMode = 1;
+    ioctlsocket(mSocket, FIONBIO, &sockMode);
     
-    std::cout << "Listening on port: " << port << std::endl << std::endl;
-    
-    while(isActive) {
-        // Listen for a connection
-        /*SOCKET clientSocket = */accept(mSocket, (sockaddr*)&client, &clientSz);
-        
-        char host[NI_MAXHOST];
-        char service[NI_MAXSERV];
-        
-        ZeroMemory(host, NI_MAXHOST);
-        ZeroMemory(service, NI_MAXSERV);
-        
-        /*int nameInfo = */getnameinfo((sockaddr*)&client, clientSz, host, NI_MAXHOST, service, NI_MAXSERV, 0);
-        
-        std::cout << "Connected" << std::endl;
-        std::cout << host << std::endl;
-        std::cout << service << std::endl << std::endl;
-    }
+    return 1;
 }
 
-void WindSock::connectToServer(void) {
+
+int WindSock::ConnectToServer(std::string address, unsigned int port) {
+    
+    if (isConnected == true) 
+        return -2;
     
     // Bind to an IP address and a PORT
     sockaddr_in hint;
@@ -138,17 +139,88 @@ void WindSock::connectToServer(void) {
     hint.sin_addr = (in_addr&)uipAddr;
     
     // Connect to the server
-    /*int connectResult = */connect(mSocket, (sockaddr*)&hint, sizeof(hint));
-    //if (connectResult) 
+    SOCKET serverSocket = connect(mSocket, (sockaddr*)&hint, sizeof(hint));
     
+    if (serverSocket == WSAEWOULDBLOCK) 
+        return -1;
+    
+    isConnected = true;
+    return serverSocket;
 }
 
-void WindSock::messageSend(char* buffer, unsigned int bufferSize) {
-    send(mSocket, buffer, bufferSize + 1, 0);
+int WindSock::CheckIncomingConnections(void) {
+    
+    sockaddr_in client;
+    int clientSz = sizeof(client);
+    
+    // Listen for a connection
+    SOCKET clientSocket = accept(mSocket, (sockaddr*)&client, &clientSz);
+    
+    if (clientSocket == WSAEWOULDBLOCK) 
+        return -1;
+    
+    socketList.push_back(clientSocket);
+    
+    char newHost[NI_MAXHOST];
+    char newService[NI_MAXSERV];
+    
+    ZeroMemory(newHost, NI_MAXHOST);
+    ZeroMemory(newService, NI_MAXSERV);
+    
+    /*int nameInfo = */
+    getnameinfo((sockaddr*)&client, clientSz, newHost, NI_MAXHOST, newService, NI_MAXSERV, 0);
+    
+    host  = newHost;
+    //port  = newService;
+    hostList.push_back(host);
+    
+    //std::cout << std::endl;
+    //std::cout << host << std::endl;
+    //std::cout << newService << std::endl;
+    
+    return clientSocket;
 }
 
-int WindSock::messageReceive(char* buffer, unsigned int bufferSize) {
-    return recv(mSocket, buffer, bufferSize, 0);
+int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
+    int numberOfBytes = 0;
+    
+    // Check incoming messages
+    for (unsigned int i=0; i < socketList.size(); i++) {
+        SOCKET socket = socketList[i];
+        
+        numberOfBytes = MessageReceive(socket, buffer, bufferSize);
+        if (numberOfBytes == SOCKET_ERROR) 
+            continue;
+        
+        // Client wants to disconnect
+        if (buffer[0] == 'X') {
+            socketList.erase(socketList.begin() + i);
+            hostList.erase(hostList.begin() + i);
+            std::cout << "Client disconnected" << std::endl;
+            break;
+        }
+        
+    }
+    
+    if (numberOfBytes == SOCKET_ERROR) 
+        numberOfBytes = -1;
+    
+    return numberOfBytes;
+}
+
+int WindSock::DisconnectFromServer(SOCKET socket) {
+    char message[] = {'X'}; // Tell the server we are disconnecting
+    MessageSend(mSocket, message, sizeof(message));
+    isConnected = false;
+    return closesocket(socket);
+}
+
+void WindSock::MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize) {
+    send(socket, buffer, bufferSize, 0);
+}
+
+int WindSock::MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize) {
+    return recv(socket, buffer, bufferSize, 0);
 }
 
 
