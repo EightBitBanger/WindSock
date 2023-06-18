@@ -16,15 +16,24 @@ void RunServer(void) {
     
     while (1) {
         
-        wSock.CheckIncomingMessages(buffer, sizeof(buffer));
+        Sleep(10);
+        
+        int socket = wSock.CheckIncomingMessages(buffer, sizeof(buffer));
+        
+        // Socket disconnected
+        if (socket == -2) {
+            std::cout << "Disconnected: " << wSock.GetLastPort() << std::endl;
+            continue;
+        }
         
         // Check new connections
         int clientSocket = wSock.CheckIncomingConnections();
         
+        // No new connections
         if (clientSocket == -1) 
             continue;
         
-        std::cout << "Connected: " << wSock.GetHost() << std::endl;
+        std::cout << "Connected: " << wSock.GetLastHost() << " : " << wSock.GetLastPort() << std::endl;
         
     }
     
@@ -40,11 +49,18 @@ void RunClient() {
     
     // Unable to connect
     if (server == -1) {
-        std::cout << "Cannot connect to the server" << std::endl;
+        std::cout << "Cannot connect to the server." << std::endl;
         return;
     }
     
-    Sleep(1000);
+    if (server == -2) {
+        std::cout << "Already connected." << std::endl;
+    } else {
+        std::cout << "Connected." << std::endl;
+    }
+    
+    std::string input;
+    std::cin >> input;
     
     wSock.DisconnectFromServer(server);
     
