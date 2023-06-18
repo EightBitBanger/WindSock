@@ -1,5 +1,5 @@
 #include "windsock.h"
-//#define _RUN_SERVER_
+#define _RUN_SERVER_
 
 
 
@@ -21,8 +21,8 @@ void RunServer(void) {
         int socket = wSock.CheckIncomingMessages(buffer, sizeof(buffer));
         
         // Socket disconnected
-        if (socket == -2) {
-            std::cout << "Disconnected: " << wSock.GetLastPort() << std::endl;
+        if (socket == 0) {
+            std::cout << "Disconnected  " << wSock.GetLastHost() << " : " << wSock.GetLastPort() << std::endl;
             continue;
         }
         
@@ -33,8 +33,7 @@ void RunServer(void) {
         if (clientSocket == -1) 
             continue;
         
-        std::cout << "Connected: " << wSock.GetLastHost() << " : " << wSock.GetLastPort() << std::endl;
-        
+        std::cout << "Connected     " << wSock.GetLastHost() << " : " << wSock.GetLastPort() << std::endl;
     }
     
 }
@@ -43,26 +42,26 @@ void RunServer(void) {
 
 void RunClient() {
     
-    WindSock wSock;
     
-    int server = wSock.ConnectToServer("192.168.200.150", 80);
-    
-    // Unable to connect
-    if (server == -1) {
-        std::cout << "Cannot connect to the server." << std::endl;
-        return;
-    }
-    
-    if (server == -2) {
-        std::cout << "Already connected." << std::endl;
-    } else {
+    while(1) {
+        
+        WindSock wSock;
+        
+        SOCKET server = wSock.ConnectToServer("192.168.200.150", 80);
+        
+        // Unable to connect
+        if (server == INVALID_SOCKET) {
+            std::cout << "Cannot connect to the server." << std::endl;
+            return;
+        }
+        
         std::cout << "Connected." << std::endl;
+        
+        //std::string input;
+        //std::cin >> input;
+        
+        wSock.DisconnectFromServer(server);
     }
-    
-    std::string input;
-    std::cin >> input;
-    
-    wSock.DisconnectFromServer(server);
     
 }
 

@@ -35,7 +35,7 @@ public:
     // Client
     
     /// Connect to a server.
-    int ConnectToServer(std::string address, unsigned int port);
+    SOCKET ConnectToServer(std::string address, unsigned int port);
     
     /// Disconnect from a server.
     int DisconnectFromServer(SOCKET socket);
@@ -46,7 +46,7 @@ public:
     int InitiateServer(unsigned int portNumber);
     
     /// Check for an incoming connection request.
-    int CheckIncomingConnections(void);
+    SOCKET CheckIncomingConnections(void);
     
     /// Check for incoming messages from any connected client.
     int CheckIncomingMessages(char* buffer, unsigned int bufferSize);
@@ -116,10 +116,10 @@ WindSock::~WindSock(void) {
     WSACleanup();
 }
 
-int WindSock::ConnectToServer(std::string address, unsigned int port) {
+SOCKET WindSock::ConnectToServer(std::string address, unsigned int port) {
     
     if (mIsConnected == true) 
-        return -2;
+        return -1;
     
     sockaddr_in hint;
     hint.sin_family = AF_INET;
@@ -130,16 +130,15 @@ int WindSock::ConnectToServer(std::string address, unsigned int port) {
     // Connect to the server
     SOCKET serverSocket = connect(mSocket, (sockaddr*)&hint, sizeof(hint));
     
-    if (serverSocket == INVALID_SOCKET) 
-        return -1;
+    if (serverSocket != INVALID_SOCKET) 
+        mIsConnected = true;
     
-    mIsConnected = true;
     return serverSocket;
 }
 
 int WindSock::DisconnectFromServer(SOCKET socket) {
-    char message[] = {'X'};
-    MessageSend(mSocket, message, sizeof(message));
+    if (!mIsConnected) return -1;
+    
     mIsConnected = false;
     return closesocket(socket);
 }
@@ -158,13 +157,14 @@ int WindSock::InitiateServer(unsigned int port) {
     u_long sockMode = 1;
     ioctlsocket(mSocket, FIONBIO, &sockMode);
     
+    if (mSocket == INVALID_SOCKET) 
+        return -1;
+    
     mIsConnected = true;
     return 1;
 }
 
-
-
-int WindSock::CheckIncomingConnections(void) {
+SOCKET WindSock::CheckIncomingConnections(void) {
     
     sockaddr_in client;
     int clientSz = sizeof(client);
@@ -172,10 +172,8 @@ int WindSock::CheckIncomingConnections(void) {
     // Listen for a connection
     SOCKET clientSocket = accept(mSocket, (sockaddr*)&client, &clientSz);
     
-    if (clientSocket == WSAEWOULDBLOCK) 
-        return -1;
-    
-    mSocketList.push_back(clientSocket);
+    if ((clientSocket == WSAEWOULDBLOCK) | (clientSocket == SOCKET_ERROR))
+        return clientSocket;
     
     char newHost[NI_MAXHOST];
     char newPort[NI_MAXSERV];
@@ -183,12 +181,13 @@ int WindSock::CheckIncomingConnections(void) {
     ZeroMemory(newHost, NI_MAXHOST);
     ZeroMemory(newPort, NI_MAXSERV);
     
-    /*int nameInfo = */
     getnameinfo((sockaddr*)&client, clientSz, newHost, NI_MAXHOST, newPort, NI_MAXSERV, 0);
     
+    // Add the client to the list
     mLastHost  = newHost;
     mLastPort  = client.sin_port;
     
+    mSocketList.push_back(clientSocket);
     mHostList.push_back(mLastHost);
     mPortList.push_back(mLastPort);
     
@@ -196,38 +195,35 @@ int WindSock::CheckIncomingConnections(void) {
 }
 
 int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
-    int numberOfBytes = 0;
+    int numberOfBytes = SOCKET_ERROR;
     
     // Check incoming messages
     for (unsigned int i=0; i < mSocketList.size(); i++) {
         SOCKET socket = mSocketList[i];
         
         numberOfBytes = MessageReceive(socket, buffer, bufferSize);
+        
         if (numberOfBytes == SOCKET_ERROR) 
             continue;
         
-        // Client wants to disconnect
-        if (buffer[0] == 'X') {
+        // Remember the last accessed host
+        mLastHost = mHostList[i];
+        mLastPort = mPortList[i];
+        
+        // Client has disconnected
+        if (numberOfBytes == 0) {
             
-            // Set the details about the last accessed host
-            mLastHost = mHostList[i];
-            mLastPort = mPortList[i];
+            closesocket(socket);
             
             // Remove the client from the server
             mSocketList.erase(mSocketList.begin() + i);
             mHostList.erase(mHostList.begin() + i);
             mPortList.erase(mPortList.begin() + i);
-            
-            closesocket(socket);
-            
-            return -2;
+            break;
         }
         
+        break;
     }
-    
-    // No messages
-    if (numberOfBytes == SOCKET_ERROR) 
-        numberOfBytes = -1;
     
     return numberOfBytes;
 }
