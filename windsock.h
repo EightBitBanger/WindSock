@@ -2,9 +2,6 @@
 #include <string>
 #include <sstream>
 
-// Currently set to windows 7 (last good version... ;) )
-#define _WIN32_WINNT   0x0601
-
 #include <WS2tcpip.h>
 
 
