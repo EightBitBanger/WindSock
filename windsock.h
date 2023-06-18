@@ -1,17 +1,38 @@
-#include <cstdlib>
-#include <stdio.h>
-#include <algorithm>
-
-#include <iostream>
 #include <vector>
 #include <string>
-
-#include <iostream>
+#include <sstream>
 
 // Currently set to windows 7 (last good version... ;) )
 #define _WIN32_WINNT   0x0601
 
 #include <WS2tcpip.h>
+
+
+class IPAddress {
+    
+public:
+    
+    unsigned char addr[4] = {192, 168, 200, 150};
+    
+    std::string str() {
+        std::string addressString;
+        addressString += UIntToString(addr[0]) + ".";
+        addressString += UIntToString(addr[1]) + ".";
+        addressString += UIntToString(addr[2]) + ".";
+        addressString += UIntToString(addr[3]);
+        return addressString;
+    }
+    
+private:
+    
+    std::string UIntToString(unsigned int value) {
+        std::stringstream sStream;
+        sStream << value;
+        return sStream.str();
+    }
+    
+};
+
 
 
 class WindSock {
@@ -21,8 +42,9 @@ public:
     WindSock(void);
     ~WindSock(void);
     
-    unsigned int GetLastPort(void)    {return mLastPort;}
-    std::string  GetLastHost(void)    {return mLastHost;}
+    unsigned int GetLastPort(void)     {return mLastPort;}
+    std::string  GetLastHost(void)     {return mLastHost;}
+    IPAddress    GetLastAddress(void)  {return mLastAddress;}
     
     // Client
     
@@ -35,7 +57,7 @@ public:
     // Server
     
     /// Start a server listening for incoming connections.
-    int InitiateServer(unsigned int portNumber);
+    int InitiateServer(unsigned int port, unsigned int maxConn=200);
     
     /// Check for an incoming connection request.
     SOCKET CheckIncomingConnections(void);
@@ -79,12 +101,14 @@ private:
     
     std::string   mLastHost;
     unsigned int  mLastPort;
+    IPAddress     mLastAddress;
     
     bool    mIsConnected;
     SOCKET  mSocket;
     
     std::vector<std::string>       mHostList;
     std::vector<unsigned int>      mPortList;
+    std::vector<IPAddress>         mAddressList;
     std::vector<SOCKET>            mSocketList;
     
 };
@@ -94,6 +118,7 @@ WindSock::WindSock(void) :
     
     mLastHost(""),
     mLastPort(0),
+    mLastAddress({127, 0, 0, 1}),
     
     mIsConnected(false),
     mSocket(0)
@@ -149,7 +174,7 @@ int WindSock::DisconnectFromServer(SOCKET socket) {
     return closesocket(socket);
 }
 
-int WindSock::InitiateServer(unsigned int port) {
+int WindSock::InitiateServer(unsigned int port, unsigned int maxConn) {
     
     sockaddr_in hint;
     hint.sin_family = AF_INET;
@@ -157,9 +182,9 @@ int WindSock::InitiateServer(unsigned int port) {
     hint.sin_addr.S_un.S_addr = INADDR_ANY;
     
     bind(mSocket, (sockaddr*)&hint, sizeof(hint));
-    listen(mSocket, SOMAXCONN);
+    listen(mSocket, maxConn);
     
-    // Non blocking socket
+    // Non blocking listening socket
     u_long sockMode = 1;
     ioctlsocket(mSocket, FIONBIO, &sockMode);
     
@@ -189,13 +214,22 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     
     getnameinfo((sockaddr*)&client, clientSz, newHost, NI_MAXHOST, newPort, NI_MAXSERV, 0);
     
+    // Get the IP address
+    IPAddress address;
+    address.addr[0] = client.sin_addr.S_un.S_un_b.s_b1;
+    address.addr[1] = client.sin_addr.S_un.S_un_b.s_b2;
+    address.addr[2] = client.sin_addr.S_un.S_un_b.s_b3;
+    address.addr[3] = client.sin_addr.S_un.S_un_b.s_b4;
+    
     // Add the client to the connection list
-    mLastHost  = newHost;
-    mLastPort  = client.sin_port;
+    mLastHost    = newHost;
+    mLastPort    = client.sin_port;
+    mLastAddress = address;
     
     mSocketList.push_back(clientSocket);
     mHostList.push_back(mLastHost);
     mPortList.push_back(mLastPort);
+    mAddressList.push_back(mLastAddress);
     
     return clientSocket;
 }
@@ -225,6 +259,7 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
             mSocketList.erase(mSocketList.begin() + i);
             mHostList.erase(mHostList.begin() + i);
             mPortList.erase(mPortList.begin() + i);
+            mAddressList.erase(mAddressList.begin() + i);
             break;
         }
         
