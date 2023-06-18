@@ -24,14 +24,6 @@ public:
     unsigned int GetLastPort(void)    {return mLastPort;}
     std::string  GetLastHost(void)    {return mLastHost;}
     
-    // Messaging
-    
-    /// Send a message
-    void MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize);
-    
-    /// Receive a message
-    int MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize);
-    
     // Client
     
     /// Connect to a server.
@@ -51,22 +43,36 @@ public:
     /// Check for incoming messages from any connected client.
     int CheckIncomingMessages(char* buffer, unsigned int bufferSize);
     
-    // Accessing active server connections
+    // Active connections
     
     /// Get the number of hosts in the connections list.
     unsigned int GetNumberOfHosts(void) {return mHostList.size();}
     /// Get a host name by its index location in the connections list.
     std::string GetHostIndex(unsigned int index) {return mHostList[index];}
+    /// Find a host index location by its name.
+    int FindHost(std::string name) {
+        for (unsigned int i=0; i < GetNumberOfHosts(); i++) 
+            if (GetHostIndex(i) == name) return i;
+        return -1;
+    }
     
     /// Get the number of ports in the connections list.
     unsigned int GetNumberOfPorts(void) {return mPortList.size();}
-    /// Get a host name by its index location in the connections list.
+    /// Get a port by its index location in the connections list.
     unsigned int GetPortIndex(unsigned int index) {return mPortList[index];}
     
-    /// Get the number of hosts in the connections list.
+    /// Get the number of sockets in the connections list.
     unsigned int GetNumberOfSockets(void) {return mSocketList.size();}
-    /// Get a socket ID by its index location in the connections list.
+    /// Get a socket by its index location in the connections list.
     SOCKET GetSocketIndex(unsigned int index) {return mSocketList[index];}
+    
+    // Messaging
+    
+    /// Send a message
+    void MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize);
+    
+    /// Receive a message
+    int MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize);
     
     
 private:
@@ -172,7 +178,7 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     // Listen for a connection
     SOCKET clientSocket = accept(mSocket, (sockaddr*)&client, &clientSz);
     
-    if ((clientSocket == WSAEWOULDBLOCK) | (clientSocket == SOCKET_ERROR))
+    if ((clientSocket == WSAEWOULDBLOCK) | (clientSocket == INVALID_SOCKET)) 
         return clientSocket;
     
     char newHost[NI_MAXHOST];
@@ -183,7 +189,7 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     
     getnameinfo((sockaddr*)&client, clientSz, newHost, NI_MAXHOST, newPort, NI_MAXSERV, 0);
     
-    // Add the client to the list
+    // Add the client to the connection list
     mLastHost  = newHost;
     mLastPort  = client.sin_port;
     
