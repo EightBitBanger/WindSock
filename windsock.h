@@ -9,27 +9,32 @@ class IPAddress {
     
 public:
     
-    unsigned char addr[4] = {192, 168, 200, 150};
+    unsigned char addr[4] = {0, 0, 0, 0};
     
     std::string str() {
         std::string addressString;
-        addressString += UIntToString(addr[0]) + ".";
-        addressString += UIntToString(addr[1]) + ".";
-        addressString += UIntToString(addr[2]) + ".";
-        addressString += UIntToString(addr[3]);
+        std::stringstream sStream;
+        
+        sStream << (unsigned int)addr[0];
+        addressString = sStream.str() + ".";
+        sStream.str("");
+        
+        sStream << (unsigned int)addr[1];
+        addressString += sStream.str() + ".";
+        sStream.str("");
+        
+        sStream << (unsigned int)addr[2];
+        addressString += sStream.str() + ".";
+        sStream.str("");
+        
+        sStream << (unsigned int)addr[3];
+        addressString += sStream.str();
+        
         return addressString;
     }
     
-private:
-    
-    std::string UIntToString(unsigned int value) {
-        std::stringstream sStream;
-        sStream << value;
-        return sStream.str();
-    }
-    
 };
-
+    
 
 
 class WindSock {
@@ -42,6 +47,8 @@ public:
     unsigned int GetLastPort(void)     {return mLastPort;}
     std::string  GetLastHost(void)     {return mLastHost;}
     IPAddress    GetLastAddress(void)  {return mLastAddress;}
+    unsigned int GetLastIndex(void)    {return mLastIndex;}
+    
     
     // Client
     
@@ -85,6 +92,12 @@ public:
     /// Get a socket by its index location in the connections list.
     SOCKET GetSocketIndex(unsigned int index) {return mSocketList[index];}
     
+    /// Get a buffer string from a socket index location in the connections list.
+    std::string GetBufferString(unsigned int index) {return mBufferList[index];}
+    /// Get a buffer string from a socket index location in the connections list.
+    void ClearBufferString(unsigned int index) {mBufferList[index] = "";}
+    
+    
     // Messaging
     
     /// Send a message
@@ -99,6 +112,7 @@ private:
     std::string   mLastHost;
     unsigned int  mLastPort;
     IPAddress     mLastAddress;
+    unsigned int  mLastIndex;
     
     bool    mIsConnected;
     SOCKET  mSocket;
@@ -107,6 +121,7 @@ private:
     std::vector<unsigned int>      mPortList;
     std::vector<IPAddress>         mAddressList;
     std::vector<SOCKET>            mSocketList;
+    std::vector<std::string>       mBufferList;
     
 };
 
@@ -116,6 +131,7 @@ WindSock::WindSock(void) :
     mLastHost(""),
     mLastPort(0),
     mLastAddress({127, 0, 0, 1}),
+    mLastIndex(0),
     
     mIsConnected(false),
     mSocket(0)
@@ -219,14 +235,18 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     address.addr[3] = client.sin_addr.S_un.S_un_b.s_b4;
     
     // Add the client to the connection list
+    mLastIndex   = GetNumberOfSockets() + 1;
     mLastHost    = newHost;
     mLastPort    = client.sin_port;
     mLastAddress = address;
+    
+    std::string newBuffer = "";
     
     mSocketList.push_back(clientSocket);
     mHostList.push_back(mLastHost);
     mPortList.push_back(mLastPort);
     mAddressList.push_back(mLastAddress);
+    mBufferList.push_back(newBuffer);
     
     return clientSocket;
 }
@@ -240,12 +260,14 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         
         numberOfBytes = MessageReceive(socket, buffer, bufferSize);
         
-        if (numberOfBytes == SOCKET_ERROR) 
+        if (numberOfBytes < 0) 
             continue;
         
         // Remember the last accessed host
-        mLastHost = mHostList[i];
-        mLastPort = mPortList[i];
+        mLastIndex   = i;
+        mLastHost    = mHostList[i];
+        mLastPort    = mPortList[i];
+        mLastAddress = mAddressList[i];
         
         // Client has disconnected
         if (numberOfBytes == 0) {
@@ -257,10 +279,18 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
             mHostList.erase(mHostList.begin() + i);
             mPortList.erase(mPortList.begin() + i);
             mAddressList.erase(mAddressList.begin() + i);
-            break;
+            mBufferList.erase(mBufferList.begin() + i);
+            continue;
         }
         
-        break;
+        // Message string
+        std::string bufferBuf;
+        for (int a=0; a < numberOfBytes; a++) 
+            bufferBuf += buffer[a];
+        
+        mBufferList[i] += bufferBuf;
+        
+        continue;
     }
     
     return numberOfBytes;
