@@ -20,11 +20,11 @@ int LoadFileHTML(std::string filename, std::string& buffer) {
     // Load the data from file
     while ( getline(fStream, tempBuffer) ) {
         
-        if (tempBuffer == "")
-            continue;
+        //if (tempBuffer == "")
+            //continue;
         
         buffer += tempBuffer;
-        buffer += "\r\n";
+        //buffer += "\r\n";
     }
     
     fStream.close();
@@ -34,7 +34,7 @@ int LoadFileHTML(std::string filename, std::string& buffer) {
 std::string GenerateHTTPStatusLine(std::string statusCode, std::string contentLength, std::string contentType, std::string requestedConnectionState) {
     std::string headerLine;
     headerLine  = "HTTP/1.1 "+statusCode+"\r\n";
-    headerLine += "Server: nginx/0.8.54\r\n";
+    headerLine += "Server: WindSock/0.9.0\r\n";
     headerLine += "Date: Mon, 02 Jan 2012 02:33:17 GMT\r\n";
     headerLine += "Content-Type: "+contentType+"\r\n";
     headerLine += "Content-Length: "+contentLength+"\r\n";
@@ -123,7 +123,7 @@ void RunServer(void) {
         // Check new connections
         SOCKET newClient = wSock.CheckIncomingConnections();
         
-        // No new connections
+        // Client has connected
         if (newClient != INVALID_SOCKET) {
             std::cout << msgConnect << wSock.GetLastAddress().str() << std::endl;
             continue;
@@ -181,11 +181,9 @@ void RunServer(void) {
                         std::string dataBody;
                         int fileSize = LoadFileHTML(resourceRequest, dataBody);
                         
-                        // Requested file does not exist
+                        // Requested file does not exist - Throw a 404
                         if (fileSize == -1) 
                             fileSize = LoadFileHTML("404.html", dataBody);
-                        if (fileSize == -1) 
-                            break;
                         
                         // Generate an HTML status
                         std::stringstream sStream;
