@@ -44,15 +44,19 @@ public:
     WindSock(void);
     ~WindSock(void);
     
+    /// Port number from the last client to access the server.
     unsigned int GetLastPort(void)     {return mLastPort;}
+    /// Host name from the last client to access the server.
     std::string  GetLastHost(void)     {return mLastHost;}
+    /// IP address from the last client to access the server.
     IPAddress    GetLastAddress(void)  {return mLastAddress;}
+    /// Index position of the last client to access the server.
     unsigned int GetLastIndex(void)    {return mLastIndex;}
     
     
     // Client
     
-    /// Connect to a server.
+    /// Connect to a server at the IP address through the port number.
     SOCKET ConnectToServer(std::string address, unsigned int port);
     
     /// Disconnect from a server.
@@ -263,7 +267,7 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         if (numberOfBytes < 0) 
             continue;
         
-        // Remember the last accessed host
+        // Remember the last accessed host data
         mLastIndex   = i;
         mLastHost    = mHostList[i];
         mLastPort    = mPortList[i];
@@ -272,14 +276,14 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         // Client has disconnected
         if (numberOfBytes == 0) {
             
-            closesocket(socket);
-            
-            // Remove the client from the server
             mSocketList.erase(mSocketList.begin() + i);
             mHostList.erase(mHostList.begin() + i);
             mPortList.erase(mPortList.begin() + i);
             mAddressList.erase(mAddressList.begin() + i);
             mBufferList.erase(mBufferList.begin() + i);
+            
+            closesocket(socket);
+            
             continue;
         }
         
