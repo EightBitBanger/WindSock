@@ -1,7 +1,7 @@
 //
 // Still under construction... may be chaotic
 
-int LoadFileHTML(std::string filename, std::string& buffer) {
+int LoadFileText(std::string filename, std::string& buffer) {
     std::fstream fStream;
     
     fStream.open( filename );
@@ -23,6 +23,18 @@ int LoadFileHTML(std::string filename, std::string& buffer) {
     
     fStream.close();
     return buffer.size();
+}
+
+int LoadFileRaw(std::string filename, char* buffer, unsigned int bufferSize) {
+    std::ifstream file(filename.c_str(), std::ios::binary | std::ios::ate);
+    std::streamsize size = file.tellg();
+    
+    file.seekg(0, std::ios::beg);
+    
+    if (!file.read(buffer, size)) 
+        return -1;
+    
+    return size;
 }
 
 std::string GenerateHTTPStatusLine(std::string statusCode, std::string contentLength, std::string contentType, std::string requestedConnectionState) {
@@ -172,33 +184,66 @@ int SocketServer::CheckRequest(void) {
             if (resourceRequest == "") 
                 resourceRequest = "index.html";
             
-            // Load the resource from file
+            int fileSize = -1;
             std::string dataBody;
-            int fileSize = LoadFileHTML(resourceRequest, dataBody);
             
-            // Requested file does not exist - Throw a 404
+            // Determine file type
+            std::string fileType = StringGetExtFromFilename(resourceRequest);
+            
+            // Load text files
+            if ((fileType == "html") | (fileType == "htm") | (fileType == "css") | (fileType == "js")) {
+                std::string newDataBody;
+                fileSize = LoadFileText(resourceRequest, newDataBody);
+                dataBody = newDataBody;
+            }
+            
+            // Load raw binary files
+            if ((fileType == "png") | (fileType == "jpg") | (fileType == "ico")) {
+                dataBody.resize(10000000);
+                fileSize = LoadFileRaw(resourceRequest, (char*)dataBody.data(), dataBody.size());
+                dataBody.resize(fileSize);
+            }
+            
+            
+            // Requested resource does not exist - Throw a 404
             if (fileSize == -1) {
-                fileSize = LoadFileHTML("404.html", dataBody);
+                std::string newDataBody;
+                fileSize = LoadFileText("404.html", newDataBody);
+                dataBody = newDataBody;
                 statusCode = "404";
             }
             
             // No 404 page, generate a default
             if (fileSize == -1) {
-                dataBody = GenerateHTMLpage404();
+                std::string dataBodyError = GenerateHTMLpage404();
+                dataBody = dataBodyError;
                 fileSize = dataBody.size();
             }
             
             
             std::string bodySzStr = IntToString(fileSize);
             
-            std::string headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_html, CONNECTION::keep_alive);
-            
+            // Determine header configuration
+            std::string headerLine;
+            if (fileType == "ico") 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
+            if (fileType == "jpg") 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_jpeg, CONNECTION::keep_alive);
+            if (fileType == "png") 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
+            if (fileType == "css") 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_css, CONNECTION::keep_alive);
+            if (fileType == "js") 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_js, CONNECTION::keep_alive);
+            if ((fileType == "html") | (fileType == "htm")) 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_html, CONNECTION::keep_alive);
             
             std::cout << "HTTP request      " << wSock.GetLastAddress().str() << " " << statusCode << " /" << resourceRequest << std::endl;
             
             // Send back the status and resource data
             std::string status = headerLine + "\r\n" + dataBody;
             wSock.MessageSend(wSock.GetSocketIndex(i), (char*)status.c_str(), status.size());
+            
         }
         
         wSock.ClearBufferString(i);
