@@ -3,22 +3,21 @@
 
 
 bool CheckDirectoryExists(std::string directoryName) {
-    
     DWORD dwAttrib = GetFileAttributes( (LPCTSTR)directoryName.data() );
-    
     return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-bool CheckFileExists(std::string filename) {
-    std::fstream fStream(filename);
+int FileCheckExists(std::string filename) {
+    std::ifstream fStream(filename.c_str(), std::ios::binary | std::ios::ate);
     if (fStream.is_open()) {
+        std::streamsize size = fStream.tellg();
         fStream.close();
-        return true;
+        return size;
     }
-    return false;
+    return -1;
 }
 
-int LoadFileText(std::string filename, std::string& buffer) {
+int FileLoadText(std::string filename, std::string& buffer) {
     std::fstream fStream(filename);
     if (!fStream.is_open()) 
         return -1;
@@ -39,13 +38,13 @@ int LoadFileText(std::string filename, std::string& buffer) {
 
 
 
-int LoadFileRaw(std::string filename, char* buffer, unsigned int bufferSize) {
-    std::ifstream file(filename.c_str(), std::ios::binary | std::ios::ate);
-    std::streamsize size = file.tellg();
+int FileLoadRaw(std::string filename, char* buffer, unsigned int bufferSize) {
+    std::ifstream fStream(filename.c_str(), std::ios::binary | std::ios::ate);
+    std::streamsize size = fStream.tellg();
     
-    file.seekg(0, std::ios::beg);
+    fStream.seekg(0, std::ios::beg);
     
-    if (!file.read(buffer, size)) 
+    if (!fStream.read(buffer, size)) 
         return -1;
     
     return size;
@@ -126,18 +125,22 @@ class SocketServer {
     
 public:
     
+    Timer time;
+    
     std::string buffer;
     
     int CheckRequest(void);
     
     std::string GenerateHTMLpage404(void);
     
+    WindSock wSock;
+    
     
     SocketServer();
     
+    int CheckTimers(void);
     
     
-    WindSock wSock;
     
     
     
@@ -150,12 +153,42 @@ private:
     
 };
 
+
+
+
+
 SocketServer::SocketServer() {
+    
+    time.SetRefreshRate(1);
     
     buffer.reserve(32768);
     buffer.resize(8096);
     
 }
+
+int SocketServer::CheckTimers() {
+    
+    if (time.Update()) {
+        unsigned int numberOfTimers = wSock.GetNumberOfTimers();
+        
+        for (unsigned int i=0; i < numberOfTimers; i++) {
+            int currentTimeout = wSock.GetTimerIndex(i);
+            currentTimeout--;
+            wSock.SetTimerValue(i, currentTimeout);
+            
+            if (currentTimeout <= 0) {
+                
+                wSock.DisconnectFromClient(i);
+                return -1;
+            }
+            
+        }
+        
+    }
+    return 0;
+}
+
+
 
 int SocketServer::CheckRequest(void) {
     
@@ -202,11 +235,11 @@ int SocketServer::CheckRequest(void) {
             if ((resourceRequest[resourceRequest.size()-1] == '/') | (resourceRequest == "")) 
                 resourceRequest += "index.html";
             
-            int fileSize = -1;
             std::string dataBody;
             
             // Determine file type
             std::string fileType = StringGetExtFromFilename(resourceRequest);
+            int fileSize = FileCheckExists(resourceRequest);
             
             // Load text files
             if ((fileType == "html") | 
@@ -214,17 +247,18 @@ int SocketServer::CheckRequest(void) {
                 (fileType == "css") | 
                 (fileType == "js")) {
                 std::string newDataBody;
-                fileSize = LoadFileText(resourceRequest, newDataBody);
+                fileSize = FileLoadText(resourceRequest, newDataBody);
                 dataBody = newDataBody;
             }
             
             // Load raw binary files
             if ((fileType == "png") | 
                 (fileType == "jpg") | 
-                (fileType == "ico")) {
+                (fileType == "ico") | 
+                (fileType == "exe")) {
                 
-                dataBody.resize(10000000);
-                fileSize = LoadFileRaw(resourceRequest, (char*)dataBody.data(), dataBody.size());
+                dataBody.resize(100000000);
+                fileSize = FileLoadRaw(resourceRequest, (char*)dataBody.data(), dataBody.size());
                 dataBody.resize(fileSize);
             }
             
@@ -234,14 +268,14 @@ int SocketServer::CheckRequest(void) {
                 resourceRequest += "/index.html";
                 fileType = "html";
                 std::string newDataBody;
-                fileSize = LoadFileText(resourceRequest, newDataBody);
+                fileSize = FileLoadText(resourceRequest, newDataBody);
                 dataBody = newDataBody;
             }
             
             // Requested resource does not exist - Throw a 404
             if (fileSize == -1) {
                 std::string newDataBody;
-                fileSize = LoadFileText("404.html", newDataBody);
+                fileSize = FileLoadText("404.html", newDataBody);
                 dataBody = newDataBody;
                 statusCode = "404";
             }
@@ -263,6 +297,11 @@ int SocketServer::CheckRequest(void) {
             if ((fileType == "png") | 
                 (fileType == "ico")) 
                 headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
+            
+            // Executable types
+            
+            if (fileType == "exe") 
+                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::application_octet_stream, CONNECTION::keep_alive);
             
             // Text content types
             

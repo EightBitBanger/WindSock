@@ -67,6 +67,9 @@ public:
     /// Start a server listening for incoming connections.
     int InitiateServer(unsigned int port, unsigned int maxConn=200);
     
+    /// Remove a client from the server.
+    int DisconnectFromClient(unsigned int index);
+    
     /// Check for an incoming connection request.
     SOCKET CheckIncomingConnections(void);
     
@@ -86,12 +89,12 @@ public:
         return -1;
     }
     
-    /// Get the number of ports in the connections list.
+    /// Get the number of ports from the connections list.
     unsigned int GetNumberOfPorts(void) {return mPortList.size();}
     /// Get a port by its index location in the connections list.
     unsigned int GetPortIndex(unsigned int index) {return mPortList[index];}
     
-    /// Get the number of sockets in the connections list.
+    /// Get the number of sockets from the connections list.
     unsigned int GetNumberOfSockets(void) {return mSocketList.size();}
     /// Get a socket by its index location in the connections list.
     SOCKET GetSocketIndex(unsigned int index) {return mSocketList[index];}
@@ -100,6 +103,13 @@ public:
     std::string GetBufferString(unsigned int index) {return mBufferList[index];}
     /// Get a buffer string from a socket index location in the connections list.
     void ClearBufferString(unsigned int index) {mBufferList[index] = "";}
+    
+    /// Get a timeout number from the connections list.
+    int GetNumberOfTimers(void) {return mTimeoutList.size();}
+    /// Get a timer by its index location in the connections list.
+    int GetTimerIndex(unsigned int index) {return mTimeoutList[index];}
+    /// Set a timer value by its index location in the connections list.
+    void SetTimerValue(unsigned int index, int value) {mTimeoutList[index] = value;}
     
     
     // Messaging
@@ -126,6 +136,7 @@ private:
     std::vector<IPAddress>         mAddressList;
     std::vector<SOCKET>            mSocketList;
     std::vector<std::string>       mBufferList;
+    std::vector<int>               mTimeoutList;
     
 };
 
@@ -251,6 +262,7 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     mPortList.push_back(mLastPort);
     mAddressList.push_back(mLastAddress);
     mBufferList.push_back(newBuffer);
+    mTimeoutList.push_back(10);
     
     return clientSocket;
 }
@@ -276,18 +288,12 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         // Client has disconnected
         if (numberOfBytes == 0) {
             
-            mSocketList.erase(mSocketList.begin() + i);
-            mHostList.erase(mHostList.begin() + i);
-            mPortList.erase(mPortList.begin() + i);
-            mAddressList.erase(mAddressList.begin() + i);
-            mBufferList.erase(mBufferList.begin() + i);
-            
-            closesocket(socket);
+            DisconnectFromClient(i);
             
             continue;
         }
         
-        // Message string
+        // Assemble a message string
         std::string bufferBuf;
         for (int a=0; a < numberOfBytes; a++) 
             bufferBuf += buffer[a];
@@ -298,6 +304,24 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
     }
     
     return numberOfBytes;
+}
+
+int WindSock::DisconnectFromClient(unsigned int index) {
+    
+    if (index > mSocketList.size()) 
+        return -1;
+    
+    SOCKET socket = mSocketList[index];
+    
+    mSocketList.erase(mSocketList.begin() + index);
+    mHostList.erase(mHostList.begin() + index);
+    mPortList.erase(mPortList.begin() + index);
+    mAddressList.erase(mAddressList.begin() + index);
+    mBufferList.erase(mBufferList.begin() + index);
+    mTimeoutList.erase(mTimeoutList.begin() + index);
+    
+    closesocket(socket);
+    return 1;
 }
 
 void WindSock::MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize) {

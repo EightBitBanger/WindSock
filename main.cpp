@@ -28,12 +28,21 @@ int main() {
     while (1) {
         
         //
+        // Timeout old connections
+        if (serverMain.CheckTimers()) {
+            
+            std::cout << "Disconnected      " << serverMain.wSock.GetLastAddress().str() << std::endl;
+            continue;
+        }
+        
+        //
         // Check new connections
         SOCKET newClient = serverMain.wSock.CheckIncomingConnections();
         
         // Client has connected
         if (newClient != INVALID_SOCKET) {
             std::cout << "Connected         " << serverMain.wSock.GetLastAddress().str() << std::endl;
+            std::cout << "active: "<< serverMain.wSock.GetNumberOfSockets() << std::endl;
             continue;
         }
         
