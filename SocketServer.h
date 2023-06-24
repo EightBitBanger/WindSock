@@ -40,6 +40,9 @@ int FileLoadText(std::string filename, std::string& buffer) {
 
 int FileLoadRaw(std::string filename, char* buffer, unsigned int bufferSize) {
     std::ifstream fStream(filename.c_str(), std::ios::binary | std::ios::ate);
+    if (!fStream.is_open()) 
+        return -1;
+    
     std::streamsize size = fStream.tellg();
     
     fStream.seekg(0, std::ios::beg);
@@ -126,25 +129,38 @@ class SocketServer {
 public:
     
     Timer time;
+    Logger Log;
+    
+    WindSock wSock;
     
     std::string buffer;
     
+    // Basic HTML rendering.
+    
+    std::string RenderHTMLHeader(std::string title, std::string colorBackground);
+    std::string RenderHTMLTextStyleBegin(std::string colorText, unsigned int size);
+    std::string RenderHTMLTextBody(std::string text, unsigned int size);
+    std::string RenderHTMLTextStyleEnd(unsigned int size);
+    std::string RenderHTMLFooter(void);
+    
+    /// Check and handle server requests.
     int CheckRequest(void);
     
-    std::string GenerateHTMLpage404(void);
     
-    WindSock wSock;
+    /// Update timers and time out old connections.
+    int CheckTimers(void);
     
     
     SocketServer();
     
-    int CheckTimers(void);
-    
-    
-    
-    
     
 private:
+    
+    void ProcessGetRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd);
+    
+    void ProcessPutRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd);
+    
+    void ProcessDeleteRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd);
     
     
     
@@ -158,12 +174,12 @@ private:
 
 
 SocketServer::SocketServer() {
+    Log.Clear();
     
     time.SetRefreshRate(1);
     
     buffer.reserve(32768);
     buffer.resize(8096);
-    
 }
 
 int SocketServer::CheckTimers() {
@@ -192,7 +208,6 @@ int SocketServer::CheckTimers() {
 
 int SocketServer::CheckRequest(void) {
     
-    std::string statusCode="200";
     std::string resourceRequest(1024, ' ');
     
     for (unsigned int i=0; i < wSock.GetNumberOfSockets(); i++) {
@@ -205,117 +220,39 @@ int SocketServer::CheckRequest(void) {
         if (clientRequest.compare(clientRequest.size()-4, 4, "\r\n\r\n") != 0) 
             continue;
         
-        // Process HTTP get requests
+        // Process HTTP requests
         for (unsigned int a=0; a < 100; a++) {
             
-            unsigned int headerEnd   = clientRequest.find("HTTP/1.1")-1;
+            unsigned int headerEnd = clientRequest.find("HTTP/1.1")-1;
             
-            // Check bad request
+            // Check complete request
             if (headerEnd == std::string::npos) 
                 continue;
             
             // Determine the request type
-            // GET  HEAD  POST  PUT  DELETE  TRACE  CONNECT
+            // GET HEAD   POST PUT   DELETE   TRACE   CONNECT
             
+            // GET request
             unsigned int headerBegin = clientRequest.find("GET /");
-            
-            if (headerBegin == std::string::npos) 
+            if (headerBegin != std::string::npos) {
+                ProcessGetRequest(i, clientRequest, resourceRequest, headerBegin, headerEnd);
                 continue;
-            
-            // Get requested resource name
-            resourceRequest.resize( headerEnd - headerBegin - 5);
-            
-            clientRequest.copy((char*)resourceRequest.c_str(), headerEnd - 5, headerBegin + 5);
-            resourceRequest.shrink_to_fit();
-            
-            // Kill the old request as it has been processed
-            clientRequest[headerBegin+1] = ' ';
-            
-            // Default index request
-            if ((resourceRequest[resourceRequest.size()-1] == '/') | (resourceRequest == "")) 
-                resourceRequest += "index.html";
-            
-            std::string dataBody;
-            
-            // Determine file type
-            std::string fileType = StringGetExtFromFilename(resourceRequest);
-            int fileSize = FileCheckExists(resourceRequest);
-            
-            // Load text files
-            if ((fileType == "html") | 
-                (fileType == "htm") | 
-                (fileType == "css") | 
-                (fileType == "js")) {
-                std::string newDataBody;
-                fileSize = FileLoadText(resourceRequest, newDataBody);
-                dataBody = newDataBody;
             }
             
-            // Load raw binary files
-            if ((fileType == "png") | 
-                (fileType == "jpg") | 
-                (fileType == "ico") | 
-                (fileType == "exe")) {
-                
-                dataBody.resize(100000000);
-                fileSize = FileLoadRaw(resourceRequest, (char*)dataBody.data(), dataBody.size());
-                dataBody.resize(fileSize);
+            // PUT request
+            headerBegin = clientRequest.find("PUT /");
+            if (headerBegin != std::string::npos) {
+                ProcessPutRequest(i, clientRequest, resourceRequest, headerBegin, headerEnd);
+                continue;
             }
             
-            // No file exists, run it as a sub directory
-            // containing perhaps an index.html?
-            if ((fileSize == -1) & (fileType == "")) {
-                resourceRequest += "/index.html";
-                fileType = "html";
-                std::string newDataBody;
-                fileSize = FileLoadText(resourceRequest, newDataBody);
-                dataBody = newDataBody;
+            // DELETE request
+            headerBegin = clientRequest.find("DELETE /");
+            if (headerBegin != std::string::npos) {
+                ProcessDeleteRequest(i, clientRequest, resourceRequest, headerBegin, headerEnd);
+                continue;
             }
             
-            // Requested resource does not exist - Throw a 404
-            if (fileSize == -1) {
-                std::string newDataBody;
-                fileSize = FileLoadText("404.html", newDataBody);
-                dataBody = newDataBody;
-                statusCode = "404";
-            }
-            
-            // No 404 page, generate a default 404 page
-            if (fileSize == -1) {
-                std::string dataBodyError = GenerateHTMLpage404();
-                dataBody = dataBodyError;
-                fileSize = dataBody.size();
-            }
-            
-            std::string bodySzStr = IntToString(fileSize);
-            std::string headerLine;
-            
-            // Image content types
-            
-            if (fileType == "jpg") 
-                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_jpeg, CONNECTION::keep_alive);
-            if ((fileType == "png") | 
-                (fileType == "ico")) 
-                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
-            
-            // Executable types
-            
-            if (fileType == "exe") 
-                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::application_octet_stream, CONNECTION::keep_alive);
-            
-            // Text content types
-            
-            if (fileType == "css") headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_css, CONNECTION::keep_alive);
-            if (fileType == "js")  headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_js, CONNECTION::keep_alive);
-            if ((fileType == "html") | 
-                (fileType == "htm")) 
-                headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_html, CONNECTION::keep_alive);
-            
-            std::cout << "HTTP request      " << wSock.GetLastAddress().str() << " " << statusCode << " /" << resourceRequest << std::endl;
-            
-            // Send back the status and requested resource data
-            std::string status = headerLine + "\r\n" + dataBody;
-            wSock.MessageSend(wSock.GetSocketIndex(i), (char*)status.c_str(), status.size());
             
         }
         
@@ -326,21 +263,176 @@ int SocketServer::CheckRequest(void) {
     return 1;
 }
 
-std::string SocketServer::GenerateHTMLpage404(void) {
+
+
+
+std::string SocketServer::RenderHTMLHeader(std::string title, std::string colorBackground) {
     std::string page;
-    page += "<html>";
-    page += "<head><title>404 Not found </title></head>";
-    page += "<body bgcolor=\"black\">";
-    page += "<h1 style=\"color:gray;\">";
-    page += "  <center><h1>  404 </h1></center>";
-    page += "  <center><h3> Page not found </h3></center>";
-    page += "</h1>";
-    page += "</body>";
+    page  = "<html>";
+    page += "<head><title>" + title + "</title></head>";
+    page += "<body bgcolor=\"" + colorBackground + "\">";
+    return page;
+}
+
+std::string SocketServer::RenderHTMLTextStyleBegin(std::string colorText, unsigned int size) {
+    std::string page;
+    std::string textSz = IntToString(size);
+    page  = "<h" + textSz + " style=\"color:" + colorText + ";\">";
+    return page;
+}
+
+std::string SocketServer::RenderHTMLTextBody(std::string text, unsigned int size) {
+    std::string page;
+    std::string textSz = IntToString(size);
+    page  = "  <center><h" + textSz + ">" + text + "</h" + textSz + "></center>";
+    return page;
+}
+
+std::string SocketServer::RenderHTMLTextStyleEnd(unsigned int size) {
+    std::string page;
+    std::string textSz = IntToString(size);
+    page  = "</h" + textSz + ">";
+    return page;
+}
+
+std::string SocketServer::RenderHTMLFooter(void) {
+    std::string page;
+    page  = "</body>";
     page += "</html>";
     return page;
 }
 
 
+void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd) {
+    std::string statusCode="200";
+    
+    // Get requested resource name
+    resourceName.resize( headerEnd - headerBegin - 5);
+    
+    clientRequest.copy((char*)resourceName.c_str(), headerEnd - 5, headerBegin + 5);
+    resourceName.shrink_to_fit();
+    
+    // Kill the old request as it has been processed
+    clientRequest[headerBegin+1] = ' ';
+    
+    // Default index request
+    if ((resourceName[resourceName.size()-1] == '/') | (resourceName == "")) 
+        resourceName += "index.html";
+    
+    std::string dataBody;
+    int fileSize=-1;
+    
+    // Determine file type
+    std::string fileType = StringGetExtFromFilename(resourceName);
+    
+    // Check resource exists
+    //if (FileCheckExists(resourceName) != -1)
+    //    return;
+    
+    // Load text files
+    if ((fileType == "html") | 
+        (fileType == "htm") | 
+        (fileType == "css") | 
+        (fileType == "js")) {
+        std::string newDataBody;
+        fileSize = FileLoadText(resourceName, newDataBody);
+        dataBody = newDataBody;
+    }
+    
+    // Load raw binary files
+    if ((fileType == "png") | 
+        (fileType == "jpg") | 
+        (fileType == "ico") | 
+        (fileType == "exe")) {
+        
+        dataBody.resize(100000000);
+        fileSize = FileLoadRaw(resourceName, (char*)dataBody.data(), dataBody.size());
+        if (fileSize != -1) {
+            dataBody.resize(fileSize);
+        }
+    }
+    
+    // No file exists, run it as a sub directory
+    // containing perhaps an index.html?
+    if ((fileSize == -1) & (fileType == "")) {
+        resourceName += "/index.html";
+        fileType = "html";
+        std::string newDataBody;
+        fileSize = FileLoadText(resourceName, newDataBody);
+        dataBody = newDataBody;
+    }
+    
+    // Requested resource does not exist - Throw a 404
+    if (fileSize == -1) {
+        std::string newDataBody;
+        fileSize = FileLoadText("404.html", newDataBody);
+        dataBody = newDataBody;
+        statusCode = "404";
+    }
+    
+    // No 404 page, generate a default
+    if (fileSize == -1) {
+        std::string page;
+        page  = RenderHTMLHeader("404 Not found", "black");
+        
+        page += RenderHTMLTextStyleBegin("white", 1);
+        page += RenderHTMLTextBody("404", 1);
+        page += RenderHTMLTextStyleEnd(1);
+        
+        page += RenderHTMLTextStyleBegin("white", 3);
+        page += RenderHTMLTextBody("Not found", 1);
+        page += RenderHTMLTextStyleEnd(3);
+        
+        page += RenderHTMLFooter();
+        dataBody = page;
+        fileSize = dataBody.size();
+    }
+    
+    std::string bodySzStr = IntToString(fileSize);
+    std::string headerLine;
+    
+    // Image content types
+    
+    if (fileType == "jpg") 
+        headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_jpeg, CONNECTION::keep_alive);
+    if ((fileType == "png") | 
+        (fileType == "ico")) 
+        headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
+    
+    // Executable types
+    
+    if (fileType == "exe") 
+        headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::application_octet_stream, CONNECTION::keep_alive);
+    
+    // Text content types
+    
+    if (fileType == "css") headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_css, CONNECTION::keep_alive);
+    if (fileType == "js")  headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_js, CONNECTION::keep_alive);
+    if ((fileType == "html") | 
+        (fileType == "htm")) 
+        headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_html, CONNECTION::keep_alive);
+    
+    std::cout << "HTTP request      " << wSock.GetLastAddress().str() << " " << statusCode << " /" << resourceName << std::endl;
+    Log.Write( "GET "+wSock.GetLastAddress().str() + " /" + resourceName );
+    
+    // Send back the status and requested resource data
+    std::string status = headerLine + "\r\n" + dataBody;
+    wSock.MessageSend(wSock.GetSocketIndex(index), (char*)status.c_str(), status.size());
+    
+}
+
+
+void SocketServer::ProcessPutRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd) {
+    
+    std::cout << clientRequest << std::endl << std::endl;
+    
+}
+
+void SocketServer::ProcessDeleteRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd) {
+    
+    std::cout << clientRequest << std::endl << std::endl;
+    
+}
 
 
 
