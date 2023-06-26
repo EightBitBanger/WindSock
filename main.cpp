@@ -29,35 +29,15 @@ int main() {
     
     while (1) {
         
-        //
-        // Timeout old connections
-        if (serverMain.CheckTimers()) {
-            
-            std::cout << "Disconnected      " << serverMain.wSock.GetLastAddress().str() << std::endl;
-            continue;
-        }
+        // Check timeout on old connections
+        serverMain.wSock.CheckTimers();
         
-        //
         // Check new connections
-        SOCKET newClient = serverMain.wSock.CheckIncomingConnections();
-        
-        // Client has connected
-        if (newClient != INVALID_SOCKET) {
-            std::cout << "Connected         " << serverMain.wSock.GetLastAddress().str() << std::endl;
-            serverMain.Log.Write( "CON "+serverMain.wSock.GetLastAddress().str() );
-            continue;
-        }
+        serverMain.wSock.CheckIncomingConnections();
         
         //
         // Check client messages
-        int messageSz = serverMain.wSock.CheckIncomingMessages((char*)serverMain.buffer.c_str(), serverMain.buffer.size());
-        
-        // Client has disconnected
-        if (messageSz == 0) {
-            std::cout << "Disconnected      " << serverMain.wSock.GetLastAddress().str() << std::endl;
-            serverMain.Log.Write( "DIS "+serverMain.wSock.GetLastAddress().str() );
-            continue;
-        }
+        serverMain.wSock.CheckIncomingMessages((char*)serverMain.mBuffer.c_str(), serverMain.mBuffer.size());
         
         //
         // Check client HTTP requests

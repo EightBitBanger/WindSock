@@ -92,6 +92,44 @@ int WindSock::FindHost(std::string name) {
 }
 
 
+unsigned int WindSock::GetNumberOfPorts(void) {
+    return mPortList.size();
+}
+
+unsigned int WindSock::GetPortIndex(unsigned int index) {
+    return mPortList[index];
+}
+
+unsigned int WindSock::GetNumberOfSockets(void) {
+    return mSocketList.size();
+}
+
+SOCKET WindSock::GetSocketIndex(unsigned int index) {
+    return mSocketList[index];
+}
+
+std::string WindSock::GetBufferString(unsigned int index) {
+    return mBufferList[index];
+}
+
+void WindSock::ClearBufferString(unsigned int index) {
+    mBufferList[index] = "";
+}
+
+
+
+int WindSock::GetNumberOfTimers(void) {
+    return mTimeoutList.size();
+}
+
+int WindSock::GetTimerIndex(unsigned int index) {
+    return mTimeoutList[index];
+}
+
+void WindSock::SetTimerValue(unsigned int index, int value) {
+    mTimeoutList[index] = value;
+}
+
 
 int WindSock::InitiateServer(unsigned int port, unsigned int maxConn) {
     
@@ -109,6 +147,8 @@ int WindSock::InitiateServer(unsigned int port, unsigned int maxConn) {
     
     if (mSocket == INVALID_SOCKET) 
         return -1;
+    
+    time.SetRefreshRate(1);
     
     mIsConnected = true;
     return 1;
@@ -155,6 +195,11 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     mBufferList.push_back(newBuffer);
     mTimeoutList.push_back(CONNECTION_TIMEOUT);
     
+    // Log client has connected
+#ifdef LOG_ACTIVITY
+    std::cout << "Connected         " << GetLastAddress().str() << std::endl;
+#endif
+    
     return clientSocket;
 }
 
@@ -181,6 +226,10 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
             
             DisconnectFromClient(i);
             
+#ifdef LOG_ACTIVITY
+            std::cout << "Disconnected      " << GetLastAddress().str() << std::endl;
+#endif
+            
             continue;
         }
         
@@ -191,6 +240,7 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         std::string bufferBuf;
         for (int a=0; a < numberOfBytes; a++) 
             bufferBuf += buffer[a];
+        bufferBuf += "[end]";
         
         mBufferList[i] += bufferBuf;
         
@@ -198,6 +248,32 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
     }
     
     return numberOfBytes;
+}
+
+int WindSock::CheckTimers(void) {
+    
+    // Increment timers
+    if (!time.Update()) 
+        return 0;
+    
+    // Check timers
+    for (int i=0; i < GetNumberOfTimers(); i++) {
+        
+        SetTimerValue(i, GetTimerIndex(i) - 1);
+        
+        if (GetTimerIndex(i) <= 0) {
+            
+            DisconnectFromClient(i);
+            
+#ifdef LOG_ACTIVITY
+            std::cout << "Timed-out         " << GetLastAddress().str() << std::endl;
+#endif
+            
+        }
+        
+    }
+    
+    return 0;
 }
 
 int WindSock::DisconnectFromClient(unsigned int index) {

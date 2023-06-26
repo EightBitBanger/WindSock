@@ -1,26 +1,31 @@
 #ifndef _WINDSOCK_
 #define _WINDSOCK_
 
+#include <iostream>
+#include <sstream>
 #include <vector>
 #include <string>
-#include <sstream>
 
 #include <WS2tcpip.h>
 
-#ifndef CONNECTION_TIMEOUT
- #define CONNECTION_TIMEOUT  120   // Seconds
-#endif
+#include "CodeBaseLibrary/timer.h"
 
-class IPAddress {
-    
-public:
+// Log incoming connections
+#define LOG_ACTIVITY
+
+// Seconds before timing-out a connection
+#define CONNECTION_TIMEOUT  120
+
+
+
+struct IPAddress {
     
     unsigned char addr[4] = {0, 0, 0, 0};
     
     std::string str();
     
 };
-    
+
 
 
 class WindSock {
@@ -39,6 +44,10 @@ public:
     SOCKET CheckIncomingConnections(void);
     /// Check for incoming messages from any connected client.
     int CheckIncomingMessages(char* buffer, unsigned int bufferSize);
+    /// Check client timers for a time-out.
+    int CheckTimers(void);
+    
+    // Last client who accessed the server
     
     /// Port number from the last client to access the server.
     unsigned int GetLastPort(void);
@@ -59,26 +68,28 @@ public:
     int FindHost(std::string name);
     
     /// Get the number of ports from the connections list.
-    unsigned int GetNumberOfPorts(void) {return mPortList.size();}
+    unsigned int GetNumberOfPorts(void);
     /// Get a port by its index location in the connections list.
-    unsigned int GetPortIndex(unsigned int index) {return mPortList[index];}
+    unsigned int GetPortIndex(unsigned int index);
     
     /// Get the number of sockets from the connections list.
-    unsigned int GetNumberOfSockets(void) {return mSocketList.size();}
+    unsigned int GetNumberOfSockets(void);
     /// Get a socket by its index location in the connections list.
-    SOCKET GetSocketIndex(unsigned int index) {return mSocketList[index];}
+    SOCKET GetSocketIndex(unsigned int index);
     
     /// Get a buffer string from a socket index location in the connections list.
-    std::string GetBufferString(unsigned int index) {return mBufferList[index];}
+    std::string GetBufferString(unsigned int index);
     /// Get a buffer string from a socket index location in the connections list.
-    void ClearBufferString(unsigned int index) {mBufferList[index] = "";}
+    void ClearBufferString(unsigned int index);
+    
+    // Timeout counter
     
     /// Get a timeout number from the connections list.
-    int GetNumberOfTimers(void) {return mTimeoutList.size();}
+    int GetNumberOfTimers(void);
     /// Get a timer by its index location in the connections list.
-    int GetTimerIndex(unsigned int index) {return mTimeoutList[index];}
+    int GetTimerIndex(unsigned int index);
     /// Set a timer value by its index location in the connections list.
-    void SetTimerValue(unsigned int index, int value) {mTimeoutList[index] = value;}
+    void SetTimerValue(unsigned int index, int value);
     
     
     // Messaging
@@ -88,6 +99,9 @@ public:
     
     /// Receive a message
     int MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize);
+    
+    /// Internal timer class
+    Timer time;
     
     
 private:
@@ -104,8 +118,8 @@ private:
     std::vector<unsigned int>      mPortList;
     std::vector<IPAddress>         mAddressList;
     std::vector<SOCKET>            mSocketList;
-    std::vector<std::string>       mBufferList;
     std::vector<int>               mTimeoutList;
+    std::vector<std::string>       mBufferList;
     
 };
 
