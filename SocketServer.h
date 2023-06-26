@@ -19,6 +19,9 @@
 #include "windsock.h"
 #include "ServerTypes.h"
 
+// Central root directory from which the server operates
+const std::string DATABASE_ROOT = "database";
+
 
 bool CheckDirectoryExists(std::string directoryName);
 

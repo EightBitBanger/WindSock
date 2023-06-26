@@ -19,11 +19,9 @@ int CheckFileExists(std::string filename) {
 std::vector<std::string> GetFileList(std::string path) {
     std::vector<std::string> results;
     
-    GetCurrentDirectory(MAX_PATH, (char*)path.c_str());
-    
     HANDLE handle;
     WIN32_FIND_DATA info;
-    handle = FindFirstFile("*.*", &info);
+    handle = FindFirstFile((char*)path.c_str(), &info);
     
     if (handle == INVALID_HANDLE_VALUE) 
         return results;
@@ -206,18 +204,16 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     headerBegin +=5;
     headerEnd   -=1;
     
-    resourceName.resize(1024);
+    resourceName.resize(2048);
     clientRequest.copy((char*)resourceName.c_str(), headerEnd, headerBegin);
     resourceName.resize(headerEnd - headerBegin);
     
     // Strip out special symbols
     unsigned int charPos = resourceName.find('%');
-    
     while (charPos != std::string::npos) {
         std::string hex = "  ";
         hex[0] = resourceName[charPos+1];
         hex[1] = resourceName[charPos+2];
-        unsigned int integer = StringToInt(hex);
         
         resourceName[charPos+1] = '%';
         resourceName[charPos+2] = '%';
@@ -225,6 +221,7 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
         charPos = resourceName.find("%%%");
         resourceName = StringReplaceAll(resourceName, "%%%", " ");
         
+        unsigned int integer=0;
         std::stringstream ss;
         ss << std::hex << hex;
         ss >> integer;
@@ -233,14 +230,12 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
         charPos = resourceName.find('%');
     }
     
-    //resourceName = StringReplaceAll(resourceName, "%20", " ");
-    
-    
     
     //
     // Check is this a search query
     if (ProcessSearchQuery(index, clientRequest, headerBegin, headerEnd)) 
         return;
+    
     
     // Default index request
     if ((resourceName[resourceName.size()-1] == '/') | (resourceName == "")) 
@@ -263,7 +258,7 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     } else {
         
         // Preallocate buffer
-        dataBody.resize(100000000);
+        dataBody.resize(1000000000);
         
         fileSize = FileLoadRaw(resourceName, (char*)dataBody.data(), dataBody.size());
         if (fileSize > 0) 
@@ -312,7 +307,7 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     }
     
     std::string bodySzStr = IntToString(fileSize);
-    std::string headerLine;
+    std::string headerLine="";
     
     // Text content types
     if (fileType == "css") headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_css, CONNECTION::keep_alive);
@@ -327,10 +322,6 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     if ((fileType == "png") | 
         (fileType == "ico")) 
         headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
-    
-    // Video content types
-    //if ((fileType == "mp4")) 
-    //    headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::application_octet_stream, CONNECTION::keep_alive);
     
     // All else fails, download the file
     if (headerLine == "") 
@@ -364,19 +355,55 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
     unsigned int endPart   = headerEnd;
     
     std::string query;
+    unsigned int querySize = endPart - beginPart;
     
-    query.resize(1024);
+    // Isolate the query part of the string
+    query.resize(2048);
     queryString.copy((char*)query.c_str(), endPart, beginPart);
-    query.resize(endPart - beginPart);
+    query.resize(querySize);
     
-    query = StringReplaceAll(query, "+", " ");
+    std::transform(query.begin(), query.end(), query.begin(),[](unsigned char c){ return std::tolower(c); });
     
     std::cout << "HTTP query        " << wSock.GetLastAddress().str() << " 200 /?search=" << query << std::endl;
     
+    query = StringReplaceAll(query, "+", " ");
+    query = StringReplaceAll(query, "_", " ");
+    
     // Generate a page of results
     std::string dataBody;
-    std::string resultHeader = "Results \"" +query+ "\"";
+    std::string resultHeader = " results \"" +query+ "\"";
+    
+    // Minimal query size
+    if (querySize <= 2) {
+        resultHeader = "Too few characters \"" +query+ "\"";
+        query = "";
+    }
+    
     RenderHTMLHeader(dataBody, "Search results", "black");
+    
+    // Get files on server
+    std::vector<std::string> fileList = GetFileList(DATABASE_ROOT + "\\*.*");
+    
+    std::vector<std::string> terms = StringExplode(query, ' ');
+    
+    std::vector<std::string> matched;
+    
+    // Find search terms
+    for (unsigned int i=0; i < fileList.size(); i++) {
+        
+        std::transform(fileList[i].begin(), fileList[i].end(), fileList[i].begin(),[](unsigned char c){ return std::tolower(c); });
+        
+        for (unsigned int t=0; t < terms.size(); t++) {
+            if (fileList[i].find(terms[t]) != std::string::npos) {
+                matched.push_back(fileList[i]);
+                break;
+            }
+        }
+        
+    }
+    
+    // File count
+    resultHeader = IntToString(matched.size()) + resultHeader;
     
     // Result header
     RenderHTMLBeginHeadingBlockStyle(dataBody, "white", 2);
@@ -384,30 +411,24 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
     RenderHTMLText(dataBody, resultHeader, 3);
     RenderHTMLEndHeadingBlock(dataBody, 2);
     
-    
     // Render the results page
     RenderHTMLBeginHeadingBlockStyle(dataBody, "white", 3);
     
-    std::vector<std::string> results;
-    results = GetFileList(query);
-    
-    for (unsigned int i=0; i < results.size(); i++) {
-        
-        if (results[i].find(query) == std::string::npos) 
-            continue;
+    // Results section
+    for (unsigned int i=0; i < matched.size(); i++) {
         
         RenderHTMLDividerLine(dataBody);
         
         RenderHTMLBeginStyle(dataBody, "left");
-        RenderHTMLLink(dataBody, results[i], results[i], "blue");
+        RenderHTMLLink(dataBody, matched[i], DATABASE_ROOT + "\\" + matched[i], "blue");
         RenderHTMLEndStyle(dataBody, "left");
         
+        RenderHTMLNewLine(dataBody);
     }
     
+    // Result footer
     RenderHTMLEndStyle(dataBody, "left");
-    
     RenderHTMLEndHeadingBlock(dataBody, 3);
-    
     RenderHTMLFooter(dataBody);
     
     // Disable any other search requests
