@@ -130,10 +130,10 @@ void SocketServer::RenderHTMLNewLine(std::string& buffer) {
     buffer += "<br>";
 }
 
-void SocketServer::RenderHTMLHeader(std::string& buffer, std::string title, std::string colorBackground) {
+void SocketServer::RenderHTMLHeader(std::string& buffer, std::string title, std::string color) {
     buffer += "<html>\r\n";
     buffer += "<head><title>" + title + "</title></head>\r\n";
-    buffer += "<body bgcolor=\"" + colorBackground + "\">\r\n";
+    buffer += "<body bgcolor=" + color + ">\r\n";
 }
 
 void SocketServer::RenderHTMLBeginDiv(std::string& buffer) {
@@ -145,9 +145,9 @@ void SocketServer::RenderHTMLBeginHeadingBlock(std::string& buffer, unsigned int
     buffer += "<h" + textSz + ">\r\n";
 }
 
-void SocketServer::RenderHTMLBeginHeadingBlockStyle(std::string& buffer, std::string style, unsigned int size) {
+void SocketServer::RenderHTMLBeginHeadingBlockStyle(std::string& buffer, std::string color, unsigned int size) {
     std::string textSz = IntToString(size);
-    buffer += "<h" + textSz + " style=\"color:" + style + ";\">\r\n";
+    buffer += "<h" + textSz + " style=\"color:" + color + "\">\r\n";
 }
 
 void SocketServer::RenderHTMLBeginStyle(std::string& buffer, std::string style) {
@@ -164,11 +164,13 @@ void SocketServer::RenderHTMLText(std::string& buffer, std::string text, unsigne
 }
 
 void SocketServer::RenderHTMLLink(std::string& buffer, std::string text, std::string link, std::string color) {
-    buffer += "<a href=\"" + link + " \" style=\"color:" + color + ";\"> " + text + " </a>";
+    buffer += "<a href=\"" + link + " \" style=\"color:" + color + "\"> " + text + " </a>";
 }
 
-void SocketServer::RenderHTMLImage(std::string& buffer, std::string textLink) {
-    buffer += "  <img src=\"" + textLink + "\" alt=\"img\">\r\n";
+void SocketServer::RenderHTMLImage(std::string& buffer, std::string textLink, unsigned int width, unsigned int height) {
+    std::string widthStr = IntToString(width);
+    std::string heightStr = IntToString(height);
+    buffer += "  <img src=\"" + textLink + "\" alt=\"img\" width = \"" + widthStr + "\" height = \"" + heightStr + "\">\r\n";
 }
 
 void SocketServer::RenderHTMLEndDiv(std::string& buffer) {
@@ -287,15 +289,15 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     // No 404 page, generate a default
     if (fileSize == -1) {
         std::string page;
-        RenderHTMLHeader(page, "404 Not found", "black");
+        RenderHTMLHeader(page, "404 Not found", "#ffffff");
         
-        RenderHTMLBeginHeadingBlockStyle(page, "white", 1);
+        RenderHTMLBeginHeadingBlockStyle(page, "#ffffff", 1);
         RenderHTMLBeginStyle(page, "right");
         RenderHTMLText(page, "404", 1);
         RenderHTMLEndStyle(page, "right");
         RenderHTMLEndHeadingBlock(page, 1);
         
-        RenderHTMLBeginHeadingBlockStyle(page, "white", 4);
+        RenderHTMLBeginHeadingBlockStyle(page, "#ffffff", 4);
         RenderHTMLBeginStyle(page, "center");
         RenderHTMLText(page, "Not found", 1);
         RenderHTMLEndStyle(page, "center");
@@ -370,22 +372,17 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
     query = StringReplaceAll(query, "_", " ");
     
     // Generate a page of results
-    std::string dataBody;
     std::string resultHeader = " results \"" +query+ "\"";
     
-    // Minimal query size
-    if (querySize <= 2) {
-        resultHeader = "Too few characters \"" +query+ "\"";
-        query = "";
-    }
-    
-    RenderHTMLHeader(dataBody, "Search results", "black");
+    // Minimal query length
+    //if (querySize <= 2) {
+    //    resultHeader = "Too few characters \"" +query+ "\"";
+    //    query = "";
+    //}
     
     // Get files on server
-    std::vector<std::string> fileList = GetFileList(DATABASE_ROOT + "\\*.*");
-    
+    std::vector<std::string> fileList = GetFileList("*.*");
     std::vector<std::string> terms = StringExplode(query, ' ');
-    
     std::vector<std::string> matched;
     
     // Find search terms
@@ -400,34 +397,64 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
             }
         }
         
+        // No terms, accept all
+        if (terms.size() == 0) {
+            matched = fileList;
+        }
+        
     }
     
     // File count
     resultHeader = IntToString(matched.size()) + resultHeader;
     
+    
+    //
+    // Render the results page
+    
+    std::string dataBody;
+    RenderHTMLHeader(dataBody, "Search results", "#0a0a0a");
+    
     // Result header
-    RenderHTMLBeginHeadingBlockStyle(dataBody, "white", 2);
-    RenderHTMLBeginStyle(dataBody, "left");
+    RenderHTMLBeginHeadingBlockStyle(dataBody, "#ffffff", 2);
+    RenderHTMLBeginStyle(dataBody, "center");
     RenderHTMLText(dataBody, resultHeader, 3);
     RenderHTMLEndHeadingBlock(dataBody, 2);
+    RenderHTMLDividerLine(dataBody);
     
     // Render the results page
-    RenderHTMLBeginHeadingBlockStyle(dataBody, "white", 3);
+    RenderHTMLBeginHeadingBlockStyle(dataBody, "#ffffff", 3);
     
     // Results section
     for (unsigned int i=0; i < matched.size(); i++) {
         
-        RenderHTMLDividerLine(dataBody);
+        std::string ext = StringGetExtFromFilename(matched[i]);
         
         RenderHTMLBeginStyle(dataBody, "left");
-        RenderHTMLLink(dataBody, matched[i], DATABASE_ROOT + "\\" + matched[i], "blue");
-        RenderHTMLEndStyle(dataBody, "left");
         
+        RenderHTMLLink(dataBody, matched[i], matched[i], "#2020ff");
+        
+        // Add an image thumbnail
+        if ((ext == "jpeg") | 
+            (ext == "jpg") | 
+            (ext == "png")) {
+            RenderHTMLNewLine(dataBody);
+            RenderHTMLImage(dataBody, matched[i], 240, 130);
+            
+            RenderHTMLNewLine(dataBody);
+            RenderHTMLNewLine(dataBody);
+            
+        } else {
+            RenderHTMLNewLine(dataBody);
+            RenderHTMLNewLine(dataBody);
+        }
+        
+        RenderHTMLEndStyle(dataBody, "left");
         RenderHTMLNewLine(dataBody);
+        
     }
     
     // Result footer
-    RenderHTMLEndStyle(dataBody, "left");
+    RenderHTMLEndStyle(dataBody, "center");
     RenderHTMLEndHeadingBlock(dataBody, 3);
     RenderHTMLFooter(dataBody);
     

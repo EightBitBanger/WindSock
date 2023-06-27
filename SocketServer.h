@@ -19,9 +19,6 @@
 #include "windsock.h"
 #include "ServerTypes.h"
 
-// Central root directory from which the server operates
-const std::string DATABASE_ROOT = "database";
-
 
 bool CheckDirectoryExists(std::string directoryName);
 
@@ -56,18 +53,18 @@ public:
     void RenderHTMLDividerLine(std::string& buffer);
     void RenderHTMLNewLine(std::string& buffer);
     
-    void RenderHTMLHeader(std::string& buffer, std::string title, std::string colorBackground);
+    void RenderHTMLHeader(std::string& buffer, std::string title, std::string color);
     
     void RenderHTMLBeginDiv(std::string& buffer);
     void RenderHTMLBeginHeadingBlock(std::string& buffer, unsigned int size);
-    void RenderHTMLBeginHeadingBlockStyle(std::string& buffer, std::string style, unsigned int size);
+    void RenderHTMLBeginHeadingBlockStyle(std::string& buffer, std::string color, unsigned int size);
     
     void RenderHTMLBeginStyle(std::string& buffer, std::string style);
     void RenderHTMLEndStyle(std::string& buffer, std::string style);
     
     void RenderHTMLText(std::string& buffer, std::string text, unsigned int size);
     void RenderHTMLLink(std::string& buffer, std::string text, std::string link, std::string color);
-    void RenderHTMLImage(std::string& buffer, std::string textLink);
+    void RenderHTMLImage(std::string& buffer, std::string textLink, unsigned int width, unsigned int height);
     
     void RenderHTMLEndDiv(std::string& buffer);
     void RenderHTMLEndHeadingBlock(std::string& buffer, unsigned int size);
