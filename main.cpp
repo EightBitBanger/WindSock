@@ -41,7 +41,6 @@ int main() {
         
         //
         // Check client HTTP requests
-        
         serverMain.CheckRequest();
         
         

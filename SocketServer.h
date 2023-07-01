@@ -49,27 +49,25 @@ public:
     std::string GenerateHTTPStatusLine(std::string statusCode, std::string contentLength, std::string contentType, std::string requestedConnectionState);
     
     // HTML rendering
+    void RenderHTMLHeader(std::string& buffer, std::string title, std::string color);
+    void RenderHTMLFooter(std::string& buffer);
     
     void RenderHTMLDividerLine(std::string& buffer);
     void RenderHTMLNewLine(std::string& buffer);
     
-    void RenderHTMLHeader(std::string& buffer, std::string title, std::string color);
-    
+    void RenderHTMLBeginTag(std::string& buffer, std::string tag);
     void RenderHTMLBeginDiv(std::string& buffer);
-    void RenderHTMLBeginHeadingBlock(std::string& buffer, unsigned int size);
-    void RenderHTMLBeginHeadingBlockStyle(std::string& buffer, std::string color, unsigned int size);
+    void RenderHTMLBeginTagSize(std::string& buffer, std::string tag, unsigned int size);
+    void RenderHTMLBeginTagStyle(std::string& buffer, std::string tag, std::string color, unsigned int size);
     
-    void RenderHTMLBeginStyle(std::string& buffer, std::string style);
-    void RenderHTMLEndStyle(std::string& buffer, std::string style);
-    
-    void RenderHTMLText(std::string& buffer, std::string text, unsigned int size);
-    void RenderHTMLLink(std::string& buffer, std::string text, std::string link, std::string color);
+    void RenderHTMLText(std::string& buffer, std::string tag, std::string text, unsigned int size);
+    void RenderHTMLLink(std::string& buffer, std::string tag, std::string text, std::string link, std::string color);
     void RenderHTMLImage(std::string& buffer, std::string textLink, unsigned int width, unsigned int height);
     
+    void RenderHTMLEndTag(std::string& buffer, std::string tag);
     void RenderHTMLEndDiv(std::string& buffer);
-    void RenderHTMLEndHeadingBlock(std::string& buffer, unsigned int size);
+    void RenderHTMLEndTagSize(std::string& buffer, std::string tag, unsigned int size);
     
-    void RenderHTMLFooter(std::string& buffer);
     
     
     /// Check and handle server requests.
@@ -84,16 +82,17 @@ public:
     
 private:
     
-    // Check and process HTTP get requests
     void ProcessGetRequest(unsigned int index, std::string& clientRequest);
     
-    // Check and process HTTP put requests
-    void ProcessPutRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd);
+    void ProcessHeadRequest(unsigned int index, std::string& clientRequest);
     
-    // Check and process HTTP delete requests
-    void ProcessDeleteRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd);
+    void ProcessPostRequest(unsigned int index, std::string& clientRequest);
     
-    // Process an incoming field
+    void ProcessPutRequest(unsigned int index, std::string& clientRequest);
+    
+    void ProcessDeleteRequest(unsigned int index, std::string& clientRequest);
+    
+    
     bool ProcessSearchQuery(unsigned int index, std::string& queryString, unsigned int headerBegin, unsigned int headerEnd);
     
 };

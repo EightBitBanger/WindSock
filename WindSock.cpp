@@ -37,19 +37,6 @@ WindSock::WindSock(void) :
     mSocket(0)
 {
     
-    WSADATA wsData;
-    WORD ver = MAKEWORD(2, 2);
-    
-    int WSOK = WSAStartup(ver, &wsData);
-    if (WSOK != 0) 
-        return;
-    
-    mSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (mSocket == INVALID_SOCKET) {
-        WSACleanup();
-        return;
-    }
-    
 }
 
 WindSock::~WindSock(void) {
@@ -133,6 +120,17 @@ void WindSock::SetTimerValue(unsigned int index, int value) {
 
 int WindSock::InitiateServer(unsigned int port, unsigned int maxConn) {
     
+    WSADATA wsData;
+    WORD ver = MAKEWORD(2, 2);
+    
+    int WSOK = WSAStartup(ver, &wsData);
+    if (WSOK != 0) 
+        return WSOK;
+    
+    mSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (mSocket == INVALID_SOCKET) 
+        return WSACleanup();
+    
     sockaddr_in hint;
     hint.sin_family = AF_INET;
     hint.sin_port = htons(port);
@@ -141,8 +139,7 @@ int WindSock::InitiateServer(unsigned int port, unsigned int maxConn) {
     bind(mSocket, (sockaddr*)&hint, sizeof(hint));
     listen(mSocket, maxConn);
     
-    // Non blocking listening socket
-    u_long sockMode = 1;
+    u_long sockMode = 1; // Non blocking listener
     ioctlsocket(mSocket, FIONBIO, &sockMode);
     
     if (mSocket == INVALID_SOCKET) 
@@ -159,7 +156,6 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     sockaddr_in client;
     int clientSz = sizeof(client);
     
-    // Listen for a connection
     SOCKET clientSocket = accept(mSocket, (sockaddr*)&client, &clientSz);
     
     if ((clientSocket == WSAEWOULDBLOCK) | (clientSocket == INVALID_SOCKET)) 
@@ -173,14 +169,13 @@ SOCKET WindSock::CheckIncomingConnections(void) {
     
     getnameinfo((sockaddr*)&client, clientSz, newHost, NI_MAXHOST, newPort, NI_MAXSERV, 0);
     
-    // Get the IP address
     IPAddress address;
     address.addr[0] = client.sin_addr.S_un.S_un_b.s_b1;
     address.addr[1] = client.sin_addr.S_un.S_un_b.s_b2;
     address.addr[2] = client.sin_addr.S_un.S_un_b.s_b3;
     address.addr[3] = client.sin_addr.S_un.S_un_b.s_b4;
     
-    // Add the client to the connection list
+    // Accept the client into the connection list
     mLastIndex   = GetNumberOfSockets() + 1;
     mLastHost    = newHost;
     mLastPort    = client.sin_port;
@@ -206,7 +201,6 @@ SOCKET WindSock::CheckIncomingConnections(void) {
 int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
     int numberOfBytes = SOCKET_ERROR;
     
-    // Check incoming messages
     for (unsigned int i=0; i < mSocketList.size(); i++) {
         SOCKET socket = mSocketList[i];
         
@@ -215,13 +209,12 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         if (numberOfBytes < 0) 
             continue;
         
-        // Remember the last accessed host data
+        // Remember the last client to access the server
         mLastIndex   = i;
         mLastHost    = mHostList[i];
         mLastPort    = mPortList[i];
         mLastAddress = mAddressList[i];
         
-        // Client has disconnected
         if (numberOfBytes == 0) {
             
             DisconnectFromClient(i);
@@ -236,11 +229,13 @@ int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
         // Reset connection time out
         mTimeoutList[i] = CONNECTION_TIMEOUT;
         
-        // Assemble a message string
+        // Assemble the message string
         std::string bufferBuf;
+        bufferBuf.reserve(numberOfBytes+1);
+        bufferBuf.resize(numberOfBytes);
         for (int a=0; a < numberOfBytes; a++) 
             bufferBuf += buffer[a];
-        bufferBuf += "[end]";
+        bufferBuf += "[break]";
         
         mBufferList[i] += bufferBuf;
         

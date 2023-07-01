@@ -8,12 +8,11 @@ bool CheckDirectoryExists(std::string directoryName) {
 
 int CheckFileExists(std::string filename) {
     std::ifstream fStream(filename.c_str(), std::ios::binary | std::ios::ate);
-    if (fStream.is_open()) {
-        std::streamsize size = fStream.tellg();
-        fStream.close();
-        return size;
-    }
-    return -1;
+    if (!fStream.is_open()) 
+        return -1;
+    std::streamsize size = fStream.tellg();
+    fStream.close();
+    return size;
 }
 
 std::vector<std::string> GetFileList(std::string path) {
@@ -53,6 +52,22 @@ int FileLoadText(std::string filename, std::string& buffer) {
     return buffer.size();
 }
 
+
+int FileGetSize(std::string filename) {
+    std::ifstream fStream(filename.c_str(), std::ios::binary | std::ios::ate);
+    if (!fStream.is_open()) 
+        return -1;
+    
+    std::streamsize size = fStream.tellg();
+    
+    fStream.seekg(0, std::ios::beg);
+    
+    fStream.close();
+    return size;
+}
+
+
+
 int FileLoadRaw(std::string filename, char* buffer, unsigned int bufferSize) {
     std::ifstream fStream(filename.c_str(), std::ios::binary | std::ios::ate);
     if (!fStream.is_open()) 
@@ -65,6 +80,7 @@ int FileLoadRaw(std::string filename, char* buffer, unsigned int bufferSize) {
     if (!fStream.read(buffer, size)) 
         return -1;
     
+    fStream.close();
     return size;
 }
 
@@ -78,8 +94,8 @@ int FileLoadRaw(std::string filename, char* buffer, unsigned int bufferSize) {
 
 SocketServer::SocketServer() {
     
-    mBuffer.reserve(100000000);
-    mBuffer.resize(100000000);
+    mBuffer.reserve(10000000);
+    mBuffer.resize(10000000);
     
 }
 
@@ -91,10 +107,35 @@ int SocketServer::CheckRequest(void) {
         if (clientRequest == "") 
             continue;
         
-        unsigned int begin = clientRequest.find("GET /");
-        unsigned int end   = clientRequest.find("[end]");
         
-        if ((begin == std::string::npos) | (end == std::string::npos)) 
+        unsigned int end   = clientRequest.find("[break]");
+        if (end == std::string::npos) 
+            continue;
+        
+        unsigned int begin = clientRequest.find("GET /");
+        int requestType = 0;
+        
+        if (begin == std::string::npos) {
+            begin = clientRequest.find("HEAD /");
+            requestType = 1;
+        }
+        
+        if (begin == std::string::npos) {
+            begin = clientRequest.find("POST /");
+            requestType = 2;
+        }
+        
+        if (begin == std::string::npos) {
+            begin = clientRequest.find("PUT /");
+            requestType = 3;
+        }
+        
+        if (begin == std::string::npos) {
+            begin = clientRequest.find("DELETE /");
+            requestType = 4;
+        }
+        
+        if (begin == std::string::npos) 
             continue;
         
         std::string firstRequest;
@@ -102,7 +143,19 @@ int SocketServer::CheckRequest(void) {
         clientRequest.copy((char*)firstRequest.c_str(), end, begin);
         firstRequest.resize(end - begin);
         
-        ProcessGetRequest(i, firstRequest);
+        switch (requestType) {
+            
+            case 0: ProcessGetRequest(i, firstRequest); break;
+            case 1: ProcessHeadRequest(i, firstRequest); break;
+            case 2: ProcessPostRequest(i, firstRequest); break;
+            case 3: ProcessPutRequest(i, firstRequest); break;
+            case 4: ProcessDeleteRequest(i, firstRequest); break;
+            
+            default:
+                break;
+            
+        }
+        
         
         wSock.ClearBufferString(i);
         
@@ -127,7 +180,7 @@ void SocketServer::RenderHTMLDividerLine(std::string& buffer) {
 }
 
 void SocketServer::RenderHTMLNewLine(std::string& buffer) {
-    buffer += "<br>";
+    buffer += "<br></br>";
 }
 
 void SocketServer::RenderHTMLHeader(std::string& buffer, std::string title, std::string color) {
@@ -140,31 +193,27 @@ void SocketServer::RenderHTMLBeginDiv(std::string& buffer) {
     buffer += "<div>";
 }
 
-void SocketServer::RenderHTMLBeginHeadingBlock(std::string& buffer, unsigned int size) {
+void SocketServer::RenderHTMLBeginTagSize(std::string& buffer, std::string tag, unsigned int size) {
     std::string textSz = IntToString(size);
-    buffer += "<h" + textSz + ">\r\n";
+    buffer += "<" + tag + textSz + ">\r\n";
 }
 
-void SocketServer::RenderHTMLBeginHeadingBlockStyle(std::string& buffer, std::string color, unsigned int size) {
+void SocketServer::RenderHTMLBeginTagStyle(std::string& buffer, std::string tag, std::string color, unsigned int size) {
     std::string textSz = IntToString(size);
-    buffer += "<h" + textSz + " style=\"color:" + color + "\">\r\n";
+    buffer += "<" + tag + textSz + " style=\"color:" + color + "\">\r\n";
 }
 
-void SocketServer::RenderHTMLBeginStyle(std::string& buffer, std::string style) {
-    buffer += "<" + style + ">\r\n";
+void SocketServer::RenderHTMLBeginTag(std::string& buffer, std::string tag) {
+    buffer += "<" + tag + ">\r\n";
 }
 
-void SocketServer::RenderHTMLEndStyle(std::string& buffer, std::string style) {
-    buffer += "</" + style + ">\r\n";
-}
-
-void SocketServer::RenderHTMLText(std::string& buffer, std::string text, unsigned int size) {
+void SocketServer::RenderHTMLText(std::string& buffer, std::string tag, std::string text, unsigned int size) {
     std::string textSz = IntToString(size);
-    buffer += "  <h" + textSz + ">" + text + "</h" + textSz + ">\r\n";
+    buffer += "  <" + tag + textSz + ">" + text + "</" + tag + textSz + ">\r\n";
 }
 
-void SocketServer::RenderHTMLLink(std::string& buffer, std::string text, std::string link, std::string color) {
-    buffer += "<a href=\"" + link + " \" style=\"color:" + color + "\"> " + text + " </a>";
+void SocketServer::RenderHTMLLink(std::string& buffer, std::string tag, std::string text, std::string link, std::string color) {
+    buffer += "<" + tag + " href=\"" + link + " \" style=\"color:" + color + "\"> " + text + " </" + tag + ">";
 }
 
 void SocketServer::RenderHTMLImage(std::string& buffer, std::string textLink, unsigned int width, unsigned int height) {
@@ -177,15 +226,176 @@ void SocketServer::RenderHTMLEndDiv(std::string& buffer) {
     buffer += "</div>";
 }
 
-void SocketServer::RenderHTMLEndHeadingBlock(std::string& buffer, unsigned int size) {
+void SocketServer::RenderHTMLEndTag(std::string& buffer, std::string tag) {
+    buffer += "</" + tag + ">\r\n";
+}
+
+void SocketServer::RenderHTMLEndTagSize(std::string& buffer, std::string tag, unsigned int size) {
     std::string textSz = IntToString(size);
-    buffer += "</h" + textSz + ">\r\n";
+    buffer += "</" + tag + textSz + ">\r\n";
 }
 
 void SocketServer::RenderHTMLFooter(std::string& buffer) {
     buffer += "\r\n</body>\r\n";
     buffer += "</html>\r\n";
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryString, unsigned int headerBegin, unsigned int headerEnd) {
+    
+    if (queryString[5] != '?') 
+        return false;
+    
+    // Check this is a search request
+    unsigned int begin = queryString.find("/?search=");
+    
+    if (begin == std::string::npos) 
+        return false;
+    
+    int beginPart = begin+9;
+    int endPart   = headerEnd;
+    
+    std::string query;
+    int querySize = endPart - beginPart;
+    
+    // Isolate the query part of the string
+    query.resize(querySize);
+    queryString.copy((char*)query.c_str(), endPart, beginPart);
+    
+    std::transform(query.begin(), query.end(), query.begin(),[](unsigned char c){ return std::tolower(c); });
+    
+    std::cout << "HTTP query        " << wSock.GetLastAddress().str() << " 200 /?search=" << query << std::endl;
+    
+    query = StringReplaceAll(query, "+", " ");
+    query = StringReplaceAll(query, "_", " ");
+    
+    // Generate a page of results
+    std::string resultHeader = " results for \"" +query+ "\"";
+    
+    
+    std::vector<std::string> fileList;
+    
+    // Minimal query length
+    if (querySize == 0) {
+        resultHeader = "Too few characters";
+        
+    } else {
+        // Get files on server
+        fileList = GetFileList("*.*");
+    }
+    
+    
+    std::vector<std::string> terms = StringExplode(query, ' ');
+    std::vector<std::string> matched;
+    
+    // Get sub directory files
+    // Find search terms
+    for (unsigned int i=0; i < fileList.size(); i++) {
+        std::string filename = fileList[i];
+        
+        if (CheckDirectoryExists(filename)) {
+            
+            std::vector<std::string> subFileList = GetFileList(filename + "\\*.*");
+            for (unsigned int i=0; i < subFileList.size(); i++) {
+                std::string subFilename = subFileList[i];
+                fileList.push_back(filename + "\\" + subFilename);
+            }
+        }
+    }
+    
+    // Find search terms
+    for (unsigned int i=0; i < fileList.size(); i++) {
+        
+        std::transform(fileList[i].begin(), fileList[i].end(), fileList[i].begin(),[](unsigned char c){ return std::tolower(c); });
+        
+        for (unsigned int t=0; t < terms.size(); t++) {
+            if (fileList[i].find(terms[t]) != std::string::npos) {
+                matched.push_back(fileList[i]);
+                break;
+            }
+        }
+        
+        // No terms, accept all
+        if (terms.size() == 0) {
+            matched = fileList;
+        }
+        
+    }
+    
+    // File count
+    if (querySize > 0) 
+        resultHeader = IntToString(matched.size()) + resultHeader;
+    
+    
+    //
+    // Render the results page
+    
+    std::string dataBody;
+    RenderHTMLHeader(dataBody, "Search results", "#040418");
+    
+    // Result header
+    RenderHTMLBeginTagStyle(dataBody, "h", "#ffffff", 2);
+    RenderHTMLBeginTag(dataBody, "center");
+    
+    // Header text
+    RenderHTMLText(dataBody, "h", resultHeader, 3);
+    RenderHTMLEndTagSize(dataBody, "h", 2);
+    RenderHTMLDividerLine(dataBody);
+    
+    // Render the results page
+    RenderHTMLBeginTagStyle(dataBody, "h", "#ffffff", 3);
+    
+    // Results section
+    for (unsigned int i=0; i < matched.size(); i++) {
+        
+        std::string ext = StringGetExtFromFilename(matched[i]);
+        
+        RenderHTMLBeginTag(dataBody, "left");
+        
+        RenderHTMLLink(dataBody, "a", matched[i], matched[i], "#2020ff");
+        
+        RenderHTMLEndTag(dataBody, "left");
+        RenderHTMLNewLine(dataBody);
+        
+    }
+    
+    // Result footer
+    RenderHTMLEndTag(dataBody, "center");
+    RenderHTMLEndTagSize(dataBody, "h", 3);
+    RenderHTMLFooter(dataBody);
+    
+    // Disable any other search requests
+    unsigned int pos = queryString.find("/?search=");
+    while (pos != std::string::npos) {
+        queryString[pos+1] = ' ';
+        pos = queryString.find("/?search=");
+    }
+    
+    std::string headerLine = GenerateHTTPStatusLine(STATECODE::ok, IntToString(dataBody.size()), CONTENTTYPE::text_html, CONNECTION::keep_alive);
+    
+    std::string status = headerLine + "\r\n" + dataBody;
+    wSock.MessageSend(wSock.GetSocketIndex(index), (char*)status.c_str(), status.size());
+    
+    return true;
+}
+
+
+
+
+
+
+
 
 
 
@@ -203,10 +413,11 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     if ((headerEnd == std::string::npos) | (headerBegin == std::string::npos)) 
         return;
     
+    // Get the web address from the request string
     headerBegin +=5;
     headerEnd   -=1;
     
-    resourceName.resize(2048);
+    resourceName.resize(1024);
     clientRequest.copy((char*)resourceName.c_str(), headerEnd, headerBegin);
     resourceName.resize(headerEnd - headerBegin);
     
@@ -238,7 +449,6 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     if (ProcessSearchQuery(index, clientRequest, headerBegin, headerEnd)) 
         return;
     
-    
     // Default index request
     if ((resourceName[resourceName.size()-1] == '/') | (resourceName == "")) 
         resourceName += "index.html";
@@ -249,24 +459,15 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     // Determine file type
     std::string fileType = StringGetExtFromFilename(resourceName);
     
-    // Load text files
-    if ((fileType == "html") | 
-        (fileType == "htm") | 
-        (fileType == "css") | 
-        (fileType == "js")) {
-        std::string newDataBody;
-        fileSize = FileLoadText(resourceName, newDataBody);
-        dataBody = newDataBody;
-    } else {
-        
-        // Preallocate buffer
-        dataBody.resize(1000000000);
-        
-        fileSize = FileLoadRaw(resourceName, (char*)dataBody.data(), dataBody.size());
-        if (fileSize > 0) 
-            dataBody.resize(fileSize);
-    }
+    // Load the file contents
+    fileSize = FileGetSize(resourceName);
     
+    
+    if (fileSize > 0) {
+        dataBody.reserve(fileSize + 1);
+        dataBody.resize(fileSize + 1);
+        fileSize = FileLoadRaw(resourceName, (char*)dataBody.data(), dataBody.size());
+    }
     
     // No file exists, run it as a sub directory
     // containing perhaps an index.html?
@@ -291,17 +492,17 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
         std::string page;
         RenderHTMLHeader(page, "404 Not found", "#ffffff");
         
-        RenderHTMLBeginHeadingBlockStyle(page, "#ffffff", 1);
-        RenderHTMLBeginStyle(page, "right");
-        RenderHTMLText(page, "404", 1);
-        RenderHTMLEndStyle(page, "right");
-        RenderHTMLEndHeadingBlock(page, 1);
+        RenderHTMLBeginTagStyle(page, "h", "#ffffff", 1);
+        RenderHTMLBeginTag(page, "right");
+        RenderHTMLText(page, "a", "404", 1);
+        RenderHTMLEndTag(page, "right");
+        RenderHTMLEndTagSize(page, "h", 1);
         
-        RenderHTMLBeginHeadingBlockStyle(page, "#ffffff", 4);
-        RenderHTMLBeginStyle(page, "center");
-        RenderHTMLText(page, "Not found", 1);
-        RenderHTMLEndStyle(page, "center");
-        RenderHTMLEndHeadingBlock(page, 4);
+        RenderHTMLBeginTagStyle(page, "h", "#ffffff", 4);
+        RenderHTMLBeginTag(page, "center");
+        RenderHTMLText(page, "a", "Not found", 1);
+        RenderHTMLEndTag(page, "center");
+        RenderHTMLEndTagSize(page, "h", 4);
         
         RenderHTMLFooter(page);
         dataBody = page;
@@ -311,21 +512,21 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     std::string bodySzStr = IntToString(fileSize);
     std::string headerLine="";
     
-    // Text content types
+    // Generate an appropriate status line
+    
     if (fileType == "css") headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_css, CONNECTION::keep_alive);
     if (fileType == "js")  headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_js, CONNECTION::keep_alive);
     if ((fileType == "html") | 
         (fileType == "htm")) 
         headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::text_html, CONNECTION::keep_alive);
     
-    // Image content types
     if ((fileType == "jpg") | (fileType == "jpeg"))
         headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_jpeg, CONNECTION::keep_alive);
     if ((fileType == "png") | 
         (fileType == "ico")) 
         headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::image_png, CONNECTION::keep_alive);
     
-    // All else fails, download the file
+    // All else fails, download as a file
     if (headerLine == "") 
         headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, CONTENTTYPE::application_octet_stream, CONNECTION::keep_alive);
     
@@ -337,144 +538,17 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     
 }
 
-
-
-
-
-
-bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryString, unsigned int headerBegin, unsigned int headerEnd) {
+void SocketServer::ProcessHeadRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd) {
     
-    if (queryString[5] != '?') 
-        return false;
+    std::cout << clientRequest << std::endl << std::endl;
     
-    // Check this is a search request
-    unsigned int begin = queryString.find("/?search=");
-    
-    if (begin == std::string::npos) 
-        return false;
-    
-    unsigned int beginPart = begin+9;
-    unsigned int endPart   = headerEnd;
-    
-    std::string query;
-    unsigned int querySize = endPart - beginPart;
-    
-    // Isolate the query part of the string
-    query.resize(2048);
-    queryString.copy((char*)query.c_str(), endPart, beginPart);
-    query.resize(querySize);
-    
-    std::transform(query.begin(), query.end(), query.begin(),[](unsigned char c){ return std::tolower(c); });
-    
-    std::cout << "HTTP query        " << wSock.GetLastAddress().str() << " 200 /?search=" << query << std::endl;
-    
-    query = StringReplaceAll(query, "+", " ");
-    query = StringReplaceAll(query, "_", " ");
-    
-    // Generate a page of results
-    std::string resultHeader = " results \"" +query+ "\"";
-    
-    // Minimal query length
-    //if (querySize <= 2) {
-    //    resultHeader = "Too few characters \"" +query+ "\"";
-    //    query = "";
-    //}
-    
-    // Get files on server
-    std::vector<std::string> fileList = GetFileList("*.*");
-    std::vector<std::string> terms = StringExplode(query, ' ');
-    std::vector<std::string> matched;
-    
-    // Find search terms
-    for (unsigned int i=0; i < fileList.size(); i++) {
-        
-        std::transform(fileList[i].begin(), fileList[i].end(), fileList[i].begin(),[](unsigned char c){ return std::tolower(c); });
-        
-        for (unsigned int t=0; t < terms.size(); t++) {
-            if (fileList[i].find(terms[t]) != std::string::npos) {
-                matched.push_back(fileList[i]);
-                break;
-            }
-        }
-        
-        // No terms, accept all
-        if (terms.size() == 0) {
-            matched = fileList;
-        }
-        
-    }
-    
-    // File count
-    resultHeader = IntToString(matched.size()) + resultHeader;
-    
-    
-    //
-    // Render the results page
-    
-    std::string dataBody;
-    RenderHTMLHeader(dataBody, "Search results", "#0a0a0a");
-    
-    // Result header
-    RenderHTMLBeginHeadingBlockStyle(dataBody, "#ffffff", 2);
-    RenderHTMLBeginStyle(dataBody, "center");
-    RenderHTMLText(dataBody, resultHeader, 3);
-    RenderHTMLEndHeadingBlock(dataBody, 2);
-    RenderHTMLDividerLine(dataBody);
-    
-    // Render the results page
-    RenderHTMLBeginHeadingBlockStyle(dataBody, "#ffffff", 3);
-    
-    // Results section
-    for (unsigned int i=0; i < matched.size(); i++) {
-        
-        std::string ext = StringGetExtFromFilename(matched[i]);
-        
-        RenderHTMLBeginStyle(dataBody, "left");
-        
-        RenderHTMLLink(dataBody, matched[i], matched[i], "#2020ff");
-        
-        // Add an image thumbnail
-        if ((ext == "jpeg") | 
-            (ext == "jpg") | 
-            (ext == "png")) {
-            RenderHTMLNewLine(dataBody);
-            RenderHTMLImage(dataBody, matched[i], 240, 130);
-            
-            RenderHTMLNewLine(dataBody);
-            RenderHTMLNewLine(dataBody);
-            
-        } else {
-            RenderHTMLNewLine(dataBody);
-            RenderHTMLNewLine(dataBody);
-        }
-        
-        RenderHTMLEndStyle(dataBody, "left");
-        RenderHTMLNewLine(dataBody);
-        
-    }
-    
-    // Result footer
-    RenderHTMLEndStyle(dataBody, "center");
-    RenderHTMLEndHeadingBlock(dataBody, 3);
-    RenderHTMLFooter(dataBody);
-    
-    // Disable any other search requests
-    unsigned int pos = queryString.find("/?search=");
-    while (pos != std::string::npos) {
-        queryString[pos+1] = ' ';
-        pos = queryString.find("/?search=");
-    }
-    
-    std::string headerLine = GenerateHTTPStatusLine(STATECODE::ok, IntToString(dataBody.size()), CONTENTTYPE::text_html, CONNECTION::keep_alive);
-    
-    std::string status = headerLine + "\r\n" + dataBody;
-    wSock.MessageSend(wSock.GetSocketIndex(index), (char*)status.c_str(), status.size());
-    return true;
 }
 
-
-
-
+void SocketServer::ProcessPostRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd) {
+    
+    std::cout << clientRequest << std::endl << std::endl;
+    
+}
 
 void SocketServer::ProcessPutRequest(unsigned int index, std::string& clientRequest, std::string& resourceName, unsigned int headerBegin, unsigned int headerEnd) {
     
