@@ -49,18 +49,15 @@ public:
     
 private:
     
-    void ProcessGetRequest(unsigned int index, std::string& clientRequest);
-    
-    void ProcessHeadRequest(unsigned int index, std::string& clientRequest);
-    
-    void ProcessPostRequest(unsigned int index, std::string& clientRequest);
-    
-    void ProcessPutRequest(unsigned int index, std::string& clientRequest);
-    
-    void ProcessDeleteRequest(unsigned int index, std::string& clientRequest);
-    
+    void ProcessGetRequest(unsigned int index, std::string& request);
+    void ProcessHeadRequest(unsigned int index, std::string& request);
+    void ProcessPostRequest(unsigned int index, std::string& request);
+    void ProcessPutRequest(unsigned int index, std::string& request);
+    void ProcessDeleteRequest(unsigned int index, std::string& request);
     
     bool ProcessSearchQuery(unsigned int index, std::string& queryString);
+    
+    void SendHTTPResponse();
     
 };
 

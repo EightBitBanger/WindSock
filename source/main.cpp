@@ -36,11 +36,9 @@ int main() {
         // Check new connections
         serverMain.wSock.CheckIncomingConnections();
         
-        //
         // Check client messages
         serverMain.wSock.CheckIncomingMessages((char*)serverMain.mBuffer.c_str(), serverMain.mBuffer.size());
         
-        //
         // Check client HTTP requests
         serverMain.CheckHTTPRequest();
         

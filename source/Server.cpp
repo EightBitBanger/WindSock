@@ -23,7 +23,6 @@ int SocketServer::CheckHTTPRequest(void) {
         if (clientRequest == "") 
             continue;
         
-        
         unsigned int end   = clientRequest.find("[break]");
         if (end == std::string::npos) 
             continue;
@@ -31,25 +30,10 @@ int SocketServer::CheckHTTPRequest(void) {
         unsigned int begin = clientRequest.find("GET /");
         int requestType = 0;
         
-        if (begin == std::string::npos) {
-            begin = clientRequest.find("HEAD /");
-            requestType = 1;
-        }
-        
-        if (begin == std::string::npos) {
-            begin = clientRequest.find("POST /");
-            requestType = 2;
-        }
-        
-        if (begin == std::string::npos) {
-            begin = clientRequest.find("PUT /");
-            requestType = 3;
-        }
-        
-        if (begin == std::string::npos) {
-            begin = clientRequest.find("DELETE /");
-            requestType = 4;
-        }
+        if (begin == std::string::npos) {begin = clientRequest.find("HEAD /"); requestType = 1;}
+        if (begin == std::string::npos) {begin = clientRequest.find("POST /"); requestType = 2;}
+        if (begin == std::string::npos) {begin = clientRequest.find("PUT /"); requestType = 3;}
+        if (begin == std::string::npos) {begin = clientRequest.find("DELETE /"); requestType = 4;}
         
         if (begin == std::string::npos) 
             continue;
@@ -92,27 +76,35 @@ std::string SocketServer::GenerateHTTPStatusLine(std::string statusCode, std::st
 
 
 bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryString) {
+    std::string searchString = "?search=";
     
-    if (queryString.find("?search=") == std::string::npos) 
+    size_t searchBegin = queryString.find(searchString);
+    
+    if (searchBegin == std::string::npos) 
         return false;
     
-    queryString.erase(0, 8);
+    unsigned int requestSz = queryString.length() - searchString.length();
+    
+    std::string query;
+    query.reserve(requestSz);
+    query.resize(requestSz);
+    queryString.copy((char*)query.c_str(), requestSz, searchBegin + searchString.length());
     
     // Lower case the string
-    std::transform(queryString.begin(), queryString.end(), queryString.begin(),[](unsigned char c){ return std::tolower(c); });
+    std::transform(query.begin(), query.end(), query.begin(),[](unsigned char c){ return std::tolower(c); });
     
-    std::cout << "HTTP query        " << wSock.GetLastAddress().str() << " 200 /?search=" << queryString << std::endl;
+    std::cout << "HTTP query        " << wSock.GetLastAddress().str() << " 200 /?search=" << query << std::endl;
     
-    queryString = StringReplaceAll(queryString, "+", " ");
-    queryString = StringReplaceAll(queryString, "_", " ");
+    query = StringReplaceAll(query, "+", " ");
+    query = StringReplaceAll(query, "_", " ");
     
     // Generate a page of results
-    std::string resultHeader = " results for \"" +queryString+ "\"";
+    std::string resultHeader = " results for \"" +query+ "\"";
     
     std::vector<std::string> fileList;
     
     // Minimal query length
-    if (queryString.length() == 0) {
+    if (query.length() == 0) {
         resultHeader = "Too few characters";
         
     } else {
@@ -121,7 +113,7 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
     }
     
     
-    std::vector<std::string> terms = StringExplode(queryString, ' ');
+    std::vector<std::string> terms = StringExplode(query, ' ');
     std::vector<std::string> matched;
     
     // Get sub directory files
@@ -151,7 +143,7 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
             }
         }
         
-        // No terms, accept all
+        // No search terms, accept all
         if (terms.size() == 0) {
             matched = fileList;
         }
@@ -159,7 +151,7 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
     }
     
     // File count
-    if (queryString.length() > 0) 
+    if (query.length() > 0) 
         resultHeader = IntToString(matched.size()) + resultHeader;
     
     
@@ -220,33 +212,39 @@ bool SocketServer::ProcessSearchQuery(unsigned int index, std::string& queryStri
 
 
 
-
-
-
-
-
-
-
-void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequest) {
+void SocketServer::SendHTTPResponse() {
     
+    
+    
+    
+}
+
+
+
+
+
+
+
+
+void SocketServer::ProcessGetRequest(unsigned int index, std::string& request) {
     std::string requestHeader = "GET /";
     std::string requestEnd    = "HTTP/1.1";
     
-    unsigned int headerBegin = clientRequest.find(requestHeader);
-    unsigned int headerEnd   = clientRequest.find(requestEnd);
+    unsigned int headerBegin = request.find(requestHeader);
+    unsigned int headerEnd   = request.find(requestEnd);
     
     if ((headerEnd == std::string::npos) | (headerBegin == std::string::npos)) 
         return;
     
-    // Get the web resource name from the request string
     unsigned int rcNameBegin  = headerBegin + requestHeader.length();
     unsigned int rcNameEnd    = headerEnd - 1;
     unsigned int rcNameSz     = rcNameEnd - rcNameBegin;
     
+    // Get the web resource name from the request string
     std::string resourceName;
     resourceName.reserve(rcNameSz);
     resourceName.resize(rcNameSz);
-    clientRequest.copy((char*)resourceName.c_str(), rcNameSz, rcNameBegin);
+    request.copy((char*)resourceName.c_str(), rcNameSz, rcNameBegin);
     
     // Strip out special symbols
     size_t charPos = resourceName.find('%');
@@ -263,24 +261,38 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
         ss >> hexChar;
         
         // Unacceptable chars
-        if ((hexChar == '\\') | 
-            (hexChar == '/') | 
-            (hexChar == '"') | 
-            (hexChar == 39)) 
-            hexChar = '?';
+        if (hexChar == '\\') 
+            hexChar = '/';
         
         resourceName[charPos] = hexChar;
         
         charPos = resourceName.find('%', charPos+1);
     }
     
-    //
+    
+    
+    
+    
     // Check is this a search query
     if (ProcessSearchQuery(index, resourceName)) 
         return;
     
     //
-    // Resource file request
+    // Attempt to locate the desired resource file and return it to the client
+    SendHTTPresponse();
+    
+    std::string body = "";
+    std::string bodySzStr = IntToString(body.length());
+    
+    std::string headerLine = GenerateHTTPStatusLine(STATECODE::ok, bodySzStr, "", CONNECTION::keep_alive);
+    
+    // Send back the status and requested resource data
+    std::string status = headerLine + "\r\n" + body;
+    
+    wSock.MessageSend(wSock.GetSocketIndex(index), (char*)status.c_str(), status.size());
+    
+    
+    /*
     
     if ((resourceName[resourceName.size()-1] == '/') | (resourceName == "")) 
         resourceName += "index.html";
@@ -295,13 +307,13 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     fileSize = FileGetSize(resourceName);
     
     if (fileSize > 0) {
-        dataBody.reserve(fileSize + 1);
-        dataBody.resize(fileSize + 1);
+        dataBody.reserve(fileSize);
+        dataBody.resize(fileSize);
         fileSize = FileLoadRaw(resourceName, (char*)dataBody.data(), dataBody.size());
     }
     
     // No file exists, run it as a sub directory
-    // containing perhaps an index.html?
+    // Try to find an index.html
     if ((fileSize == -1) & (fileType == "")) {
         resourceName += "/index.html";
         std::string newDataBody;
@@ -334,12 +346,12 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     if ((fileType == "html") | 
         (fileType == "htm"))  contentType = CONTENTTYPE::text_html;
     
-    if ((fileType == "jpg") | 
-        (fileType == "jpeg")) contentType = CONTENTTYPE::image_jpeg;
+    if ((fileType == "jpeg") | 
+        (fileType == "jpg"))  contentType = CONTENTTYPE::image_jpeg;
     if ((fileType == "png") | 
         (fileType == "ico"))  contentType = CONTENTTYPE::image_png;
     
-    // Last resort, download it
+    // Last resort, stream it
     if (contentType == "")    contentType = CONTENTTYPE::octet_stream;
     
     headerLine = GenerateHTTPStatusLine(stateCode, bodySzStr, contentType, connection);
@@ -348,36 +360,37 @@ void SocketServer::ProcessGetRequest(unsigned int index, std::string& clientRequ
     
     // Send back the status and requested resource data
     std::string status = headerLine + "\r\n" + dataBody;
+    
     wSock.MessageSend(wSock.GetSocketIndex(index), (char*)status.c_str(), status.size());
+    */
+    return;
+}
+
+
+void SocketServer::ProcessHeadRequest(unsigned int index, std::string& request) {
     
+    std::cout << request << std::endl << std::endl;
     
 }
 
 
-void SocketServer::ProcessHeadRequest(unsigned int index, std::string& clientRequest) {
+void SocketServer::ProcessPostRequest(unsigned int index, std::string& request) {
     
-    std::cout << clientRequest << std::endl << std::endl;
-    
-}
-
-
-void SocketServer::ProcessPostRequest(unsigned int index, std::string& clientRequest) {
-    
-    std::cout << clientRequest << std::endl << std::endl;
+    std::cout << request << std::endl << std::endl;
     
 }
 
 
-void SocketServer::ProcessPutRequest(unsigned int index, std::string& clientRequest) {
+void SocketServer::ProcessPutRequest(unsigned int index, std::string& request) {
     
-    std::cout << clientRequest << std::endl << std::endl;
+    std::cout << request << std::endl << std::endl;
     
 }
 
 
-void SocketServer::ProcessDeleteRequest(unsigned int index, std::string& clientRequest) {
+void SocketServer::ProcessDeleteRequest(unsigned int index, std::string& request) {
     
-    std::cout << clientRequest << std::endl << std::endl;
+    std::cout << request << std::endl << std::endl;
     
 }
 
