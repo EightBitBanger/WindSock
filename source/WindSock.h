@@ -3,123 +3,91 @@
 
 #include <iostream>
 #include <sstream>
+#include <algorithm>
+#include <unordered_map>
+
 #include <vector>
 #include <string>
+#include <fstream>
 
-#include <WS2tcpip.h>
+#include <stdio.h>
+#include <winsock2.h>
 
-#include "CodeBaseLibrary/timer.h"
+#include "Logger.h"
 
-// Log incoming connections
-#define LOG_ACTIVITY
+std::string get_mime_type(std::string& filename);
+bool fetch_file(const std::string& filename, std::vector<char>& buffer);
 
-// Seconds before timing-out a connection
-#define CONNECTION_TIMEOUT  120
+std::vector<std::string> split_words(const std::string& input_string);
+std::vector<std::string> split_lines(const std::string& input_string);
 
 
-
-struct IPAddress {
+class ClientRequest {
+public:
+    bool isReadyToSend;
     
-    unsigned char addr[4] = {0, 0, 0, 0};
+    ClientRequest();
     
-    std::string str();
+    SOCKET socket;
+    std::string host;
+    std::string port;
+    std::string ipaddress;
     
+    std::string type;
+    std::string request;
+    
+    /// Data to be returned to the client
+    std::string mime;
+    std::string buffer;
 };
 
-
-
-class WindSock {
+class Windsock {
     
 public:
     
-    WindSock(void);
-    ~WindSock(void);
+    /// Initiate the server.
+    int initiate(void);
     
-    /// Start a server listening for incoming connections.
-    int InitiateServer(unsigned int port, unsigned int maxConn=200);
-    /// Remove a client from the server.
-    int DisconnectFromClient(unsigned int index);
+    /// Begin listening on port 80 for HTTP requests.
+    int start(void);
     
-    /// Check for an incoming connection request.
-    SOCKET CheckIncomingConnections(void);
-    /// Check for incoming messages from any connected client.
-    int CheckIncomingMessages(char* buffer, unsigned int bufferSize);
-    /// Check client timers for a time-out.
-    int CheckTimers(void);
+    /// Check for incoming connection requests.
+    int checkRequests(void);
     
-    // Last client who accessed the server
+    /// Check for incoming connection requests.
+    int processRequests(void);
     
-    /// Port number from the last client to access the server.
-    unsigned int GetLastPort(void);
-    /// Host name from the last client to access the server.
-    std::string  GetLastHost(void);
-    /// IP address from the last client to access the server.
-    IPAddress    GetLastAddress(void);
-    /// Index position of the last client to access the server.
-    unsigned int GetLastIndex(void);
+    /// Get a client request by its index.
+    ClientRequest* getClientRequest(unsigned int index);
     
-    // Active connections
+    /// Remove a client request by its index.
+    int removeClientRequest(unsigned int index);
     
-    /// Get the number of hosts in the connections list.
-    unsigned int GetNumberOfHosts(void);
-    /// Get a host name by its index location in the connections list.
-    std::string GetHostIndex(unsigned int index);
-    /// Find a host index location by its name.
-    int FindHost(std::string name);
+    /// Get the number of client requests in queue.
+    unsigned int getNumberOfClientRequests(void);
     
-    /// Get the number of ports from the connections list.
-    unsigned int GetNumberOfPorts(void);
-    /// Get a port by its index location in the connections list.
-    unsigned int GetPortIndex(unsigned int index);
+    /// Shutdown the server
+    void Shutdown(void);
     
-    /// Get the number of sockets from the connections list.
-    unsigned int GetNumberOfSockets(void);
-    /// Get a socket by its index location in the connections list.
-    SOCKET GetSocketIndex(unsigned int index);
+    Windsock();
     
-    /// Get a buffer string from a socket index location in the connections list.
-    std::string GetBufferString(unsigned int index);
-    /// Get a buffer string from a socket index location in the connections list.
-    void ClearBufferString(unsigned int index);
+    std::string GenerateStatusLine(std::string statusCode, std::string contentLength, std::string contentType, std::string requestedConnectionState);
     
-    // Timeout counter
-    
-    /// Get a timeout number from the connections list.
-    int GetNumberOfTimers(void);
-    /// Get a timer by its index location in the connections list.
-    int GetTimerIndex(unsigned int index);
-    /// Set a timer value by its index location in the connections list.
-    void SetTimerValue(unsigned int index, int value);
-    
-    
-    // Messaging
-    
-    /// Send a message
-    void MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize);
-    
-    /// Receive a message
-    int MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize);
-    
-    /// Internal timer class
-    Timer time;
-    
+    std::string pageIndex;
     
 private:
     
-    std::string   mLastHost;
-    unsigned int  mLastPort;
-    IPAddress     mLastAddress;
-    unsigned int  mLastIndex;
+    WSADATA wsaData;
+    SOCKET serverSocket;
+    SOCKET clientSocket;
     
-    bool    mIsConnected;
-    SOCKET  mSocket;
+    struct sockaddr_in server;
+    struct sockaddr_in client;
     
-    std::vector<std::string>       mHostList;
-    std::vector<unsigned int>      mPortList;
-    std::vector<IPAddress>         mAddressList;
-    std::vector<SOCKET>            mSocketList;
-    std::vector<int>               mTimeoutList;
-    std::vector<std::string>       mBufferList;
+    Logger Log;
+    
+    // Active requests list
+    std::vector<ClientRequest*> mClients;
     
 };
 

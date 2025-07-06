@@ -1,12 +1,15 @@
 #include "Renderer.h"
+#include <sstream>
+
+int StringToInt(std::string str);
+std::string IntToString(int value);
+
 
 HTMLRenderer::HTMLRenderer() :
     buffer("")
 {
     
 }
-
-
 
 void HTMLRenderer::dividerLine(void) {
     buffer += "<hr>";
@@ -17,6 +20,7 @@ void HTMLRenderer::newLine(void) {
 }
 
 void HTMLRenderer::header(std::string title, std::string color) {
+    buffer += "<!DOCTYPE html>\r\n";
     buffer += "<html>\r\n";
     buffer += "<head><title>" + title + "</title></head>\r\n";
     buffer += "<body bgcolor=" + color + ">\r\n";
@@ -42,18 +46,26 @@ void HTMLRenderer::beginTag(std::string tag) {
 
 void HTMLRenderer::text(std::string tag, std::string text, unsigned int size) {
     std::string textSz = IntToString(size);
-    buffer += "  <" + tag + textSz + ">" + text + "</" + tag + textSz + ">\r\n";
+    buffer += "  <"+tag+textSz+">" + text + "</" + tag + textSz + ">\r\n";
 }
+
+void HTMLRenderer::textMargin(std::string tag, std::string text, unsigned int size, unsigned int margin) {
+    std::string marginString = IntToString(margin);
+    std::string textSz = IntToString(size);
+    buffer += "  <"+tag+textSz+" style=\"margin: "+marginString+"px 0;\">" + text + "</"+tag+textSz+">\r\n";
+}
+
 
 void HTMLRenderer::link(std::string tag, std::string text, std::string link, std::string color) {
-    buffer += "<" + tag + " href=\"" + link + " \" style=\"color:" + color + "\"> " + text + " </" + tag + ">";
+    buffer += "<"+tag+ " href=\"" + link + " \" style=\"color:" + color + "\"> " + text + " </" + tag + ">";
 }
 
-void HTMLRenderer::image(std::string textLink, unsigned int width, unsigned int height) {
+void HTMLRenderer::image(std::string textLink, unsigned int width, unsigned int height, unsigned int margin) {
     if (width > 0) {
         std::string widthStr = IntToString(width);
         std::string heightStr = IntToString(height);
-        buffer += "  <img src=\"" + textLink + "\" alt=\"img\" width = \"" + widthStr + "\" height = \"" + heightStr + "\">\r\n";
+        std::string marginStr = IntToString(margin);
+        buffer += "  <img src=\"" + textLink + "\" alt=\"img\" style=\"width: "+widthStr+"px; height: "+heightStr+"px; margin-right: "+marginStr+"px;\">\r\n";
     } else {
         buffer += "  <img src=\"" + textLink + "\" alt=\"img\">\r\n";
     }
@@ -85,4 +97,20 @@ std::string HTMLRenderer::bufferFlush(void) {
 void HTMLRenderer::bufferClear(void) {
     buffer = "";
 }
+
+
+// Assistant functions
+
+std::string IntToString(int value) {
+    std::stringstream sStream;
+    sStream << value;
+    return sStream.str();
+}
+
+int StringToInt(std::string str) {
+    int value;
+    std::stringstream(str) >> value;
+    return value;
+}
+
 

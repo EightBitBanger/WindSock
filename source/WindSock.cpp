@@ -1,299 +1,262 @@
-#define _WIN32_WINNT   0x0601
-
 #include "windsock.h"
+#include "renderer.h"
 
+#include <string_view>
 
-std::string IPAddress::str() {
-    std::string addressString;
-    std::stringstream sStream;
+#include <WS2tcpip.h>
+
+std::string IntToString(int value);
+
+bool get_file(const std::string& filename, std::vector<char>& buffer);
+
+std::vector<std::string> split_words(const std::string& input_string);
+std::vector<std::string> split_lines(const std::string& input_string);
+
+std::string get_mime_type(std::string& filename);
+
+Windsock::Windsock() {
     
-    sStream << (unsigned int)addr[0];
-    addressString = sStream.str() + ".";
-    sStream.str("");
-    
-    sStream << (unsigned int)addr[1];
-    addressString += sStream.str() + ".";
-    sStream.str("");
-    
-    sStream << (unsigned int)addr[2];
-    addressString += sStream.str() + ".";
-    sStream.str("");
-    
-    sStream << (unsigned int)addr[3];
-    addressString += sStream.str();
-    return addressString;
+    Log.Clear();
 }
 
-
-
-WindSock::WindSock(void) :
-    
-    mLastHost(""),
-    mLastPort(0),
-    mLastAddress({127, 0, 0, 1}),
-    mLastIndex(0),
-    
-    mIsConnected(false),
-    mSocket(0)
+ClientRequest::ClientRequest() : 
+    isReadyToSend(false)
 {
+}
+
+int Windsock::initiate(void) {
+    int state = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (state != 0) 
+        printf("WSA failed to initiate\n");
     
+    return state;
 }
 
-WindSock::~WindSock(void) {
-    
-    if (mSocket != INVALID_SOCKET) 
-        closesocket(mSocket);
-    
-    WSACleanup();
-}
-
-
-unsigned int WindSock::GetLastPort(void) {
-    return mLastPort;
-}
-
-std::string  WindSock::GetLastHost(void) {
-    return mLastHost;
-}
-
-IPAddress WindSock::GetLastAddress(void) {
-    return mLastAddress;
-}
-
-unsigned int WindSock::GetLastIndex(void) {
-    return mLastIndex;
-}
-
-unsigned int WindSock::GetNumberOfHosts(void) {
-    return mHostList.size();
-}
-
-std::string WindSock::GetHostIndex(unsigned int index) {
-    return mHostList[index];
-}
-
-int WindSock::FindHost(std::string name) {
-    for (unsigned int i=0; i < GetNumberOfHosts(); i++) 
-        if (GetHostIndex(i) == name) return i;
-    return -1;
-}
-
-
-unsigned int WindSock::GetNumberOfPorts(void) {
-    return mPortList.size();
-}
-
-unsigned int WindSock::GetPortIndex(unsigned int index) {
-    return mPortList[index];
-}
-
-unsigned int WindSock::GetNumberOfSockets(void) {
-    return mSocketList.size();
-}
-
-SOCKET WindSock::GetSocketIndex(unsigned int index) {
-    return mSocketList[index];
-}
-
-std::string WindSock::GetBufferString(unsigned int index) {
-    return mBufferList[index];
-}
-
-void WindSock::ClearBufferString(unsigned int index) {
-    mBufferList[index] = "";
-}
-
-
-
-int WindSock::GetNumberOfTimers(void) {
-    return mTimeoutList.size();
-}
-
-int WindSock::GetTimerIndex(unsigned int index) {
-    return mTimeoutList[index];
-}
-
-void WindSock::SetTimerValue(unsigned int index, int value) {
-    mTimeoutList[index] = value;
-}
-
-
-int WindSock::InitiateServer(unsigned int port, unsigned int maxConn) {
-    
-    WSADATA wsData;
-    WORD ver = MAKEWORD(2, 2);
-    
-    int WSOK = WSAStartup(ver, &wsData);
-    if (WSOK != 0) 
-        return WSOK;
-    
-    mSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (mSocket == INVALID_SOCKET) 
-        return WSACleanup();
-    
-    sockaddr_in hint;
-    hint.sin_family = AF_INET;
-    hint.sin_port = htons(port);
-    hint.sin_addr.S_un.S_addr = INADDR_ANY;
-    
-    bind(mSocket, (sockaddr*)&hint, sizeof(hint));
-    listen(mSocket, maxConn);
-    
-    u_long sockMode = 1; // Non blocking listener
-    ioctlsocket(mSocket, FIONBIO, &sockMode);
-    
-    if (mSocket == INVALID_SOCKET) 
+int Windsock::start(void) {
+    // Create socket
+    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket == INVALID_SOCKET) {
+        printf("Socket failed to initiate\n");
+        WSACleanup();
         return -1;
-    
-    time.SetRefreshRate(1);
-    
-    mIsConnected = true;
-    return 1;
-}
-
-SOCKET WindSock::CheckIncomingConnections(void) {
-    
-    sockaddr_in client;
-    int clientSz = sizeof(client);
-    
-    SOCKET clientSocket = accept(mSocket, (sockaddr*)&client, &clientSz);
-    
-    if ((clientSocket == WSAEWOULDBLOCK) | (clientSocket == INVALID_SOCKET)) 
-        return clientSocket;
-    
-    char newHost[NI_MAXHOST];
-    char newPort[NI_MAXSERV];
-    
-    ZeroMemory(newHost, NI_MAXHOST);
-    ZeroMemory(newPort, NI_MAXSERV);
-    
-    getnameinfo((sockaddr*)&client, clientSz, newHost, NI_MAXHOST, newPort, NI_MAXSERV, 0);
-    
-    IPAddress address;
-    address.addr[0] = client.sin_addr.S_un.S_un_b.s_b1;
-    address.addr[1] = client.sin_addr.S_un.S_un_b.s_b2;
-    address.addr[2] = client.sin_addr.S_un.S_un_b.s_b3;
-    address.addr[3] = client.sin_addr.S_un.S_un_b.s_b4;
-    
-    // Accept the client into the connection list
-    mLastIndex   = GetNumberOfSockets() + 1;
-    mLastHost    = newHost;
-    mLastPort    = client.sin_port;
-    mLastAddress = address;
-    
-    std::string newBuffer = "";
-    
-    mSocketList.push_back(clientSocket);
-    mHostList.push_back(mLastHost);
-    mPortList.push_back(mLastPort);
-    mAddressList.push_back(mLastAddress);
-    mBufferList.push_back(newBuffer);
-    mTimeoutList.push_back(CONNECTION_TIMEOUT);
-    
-    // Log client has connected
-#ifdef LOG_ACTIVITY
-    std::cout << "Connected         " << GetLastAddress().str() << std::endl;
-#endif
-    
-    return clientSocket;
-}
-
-int WindSock::CheckIncomingMessages(char* buffer, unsigned int bufferSize) {
-    int numberOfBytes = SOCKET_ERROR;
-    
-    for (unsigned int i=0; i < mSocketList.size(); i++) {
-        SOCKET socket = mSocketList[i];
-        
-        numberOfBytes = MessageReceive(socket, buffer, bufferSize);
-        
-        if (numberOfBytes < 0) 
-            continue;
-        
-        // Remember the last client to access the server
-        mLastIndex   = i;
-        mLastHost    = mHostList[i];
-        mLastPort    = mPortList[i];
-        mLastAddress = mAddressList[i];
-        
-        if (numberOfBytes == 0) {
-            
-            DisconnectFromClient(i);
-            
-#ifdef LOG_ACTIVITY
-            std::cout << "Disconnected      " << GetLastAddress().str() << std::endl;
-#endif
-            
-            continue;
-        }
-        
-        // Reset connection time out
-        mTimeoutList[i] = CONNECTION_TIMEOUT;
-        
-        // Assemble the message string
-        std::string bufferBuf;
-        bufferBuf.reserve(numberOfBytes+1);
-        bufferBuf.resize(numberOfBytes);
-        for (int a=0; a < numberOfBytes; a++) 
-            bufferBuf += buffer[a];
-        bufferBuf += "[break]";
-        
-        mBufferList[i] += bufferBuf;
-        
-        continue;
     }
     
-    return numberOfBytes;
-}
-
-int WindSock::CheckTimers(void) {
+    // Bind to port 80
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(80);
     
-    // Increment timers
-    if (!time.Update()) 
-        return 0;
-    
-    // Check timers
-    for (int i=0; i < GetNumberOfTimers(); i++) {
-        
-        SetTimerValue(i, GetTimerIndex(i) - 1);
-        
-        if (GetTimerIndex(i) <= 0) {
-            
-            DisconnectFromClient(i);
-            
-#ifdef LOG_ACTIVITY
-            std::cout << "Timed-out         " << GetLastAddress().str() << std::endl;
-#endif
-            
-        }
-        
+    if (bind(serverSocket, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        printf("Bind failed.\n");
+        closesocket(serverSocket);
+        WSACleanup();
+        return -2;
     }
     
+    // Listen for connections
+    listen(serverSocket, 1);
+    printf("Server ready\n");
     return 0;
 }
 
-int WindSock::DisconnectFromClient(unsigned int index) {
+int Windsock::checkRequests(void) {
+    int clientLen = sizeof(client);
     
-    if (index > mSocketList.size()) 
+    // Accept a connection
+    clientSocket = accept(serverSocket, (struct sockaddr *)&client, &clientLen);
+    if (clientSocket == INVALID_SOCKET) {
+        printf("Accept failed.\n");
         return -1;
+    }
     
-    SOCKET socket = mSocketList[index];
+    // Get the client IP, host and the port number
+    char* clientIP = inet_ntoa(client.sin_addr);
+    char host[NI_MAXHOST];
+    char port[NI_MAXSERV];
+    ZeroMemory(host, NI_MAXHOST);
+    ZeroMemory(port, NI_MAXSERV);
+    getnameinfo((sockaddr*)&client, clientLen, host, NI_MAXHOST, port, NI_MAXSERV, 0);
     
-    mSocketList.erase(mSocketList.begin() + index);
-    mHostList.erase(mHostList.begin() + index);
-    mPortList.erase(mPortList.begin() + index);
-    mAddressList.erase(mAddressList.begin() + index);
-    mBufferList.erase(mBufferList.begin() + index);
-    mTimeoutList.erase(mTimeoutList.begin() + index);
+    // Clear the incoming buffer
+    std::string buffer;
+    buffer.resize(2048);
+    memset((void*)buffer.c_str(), ' ', 2048);
     
-    closesocket(socket);
-    return 1;
+    // Read the received data into the buffer
+    int bytesReceived = recv(clientSocket, (char*)buffer.c_str(), buffer.size() - 1, 0);
+    if (bytesReceived > 0) {
+        // Split the request lines
+        std::vector<std::string> lines = split_lines(buffer);
+        std::vector<std::string> request = split_words(lines[0]);
+        
+        std::vector<std::string> ipaddess = split_words(lines[1]);
+        
+        // Submit the request
+        ClientRequest* clientReq = new(ClientRequest);
+        clientReq->host      = host;
+        clientReq->port      = port;
+        clientReq->ipaddress = clientIP;
+        
+        // Remove the leading slash
+        
+        // Default to the index
+        if (request[1] == "/") 
+            request[1] = "/index.html";
+        
+        clientReq->type = request[0];
+        clientReq->socket = clientSocket;
+        clientReq->request = request[1];
+        clientReq->mime = get_mime_type(request[1]);
+        
+        clientReq->isReadyToSend = false;
+        mClients.push_back(clientReq);
+        
+        std::cout << ipaddess[1] << " request  " << request[1] << "\n";
+        
+        Log.Write(clientReq->ipaddress);
+        Log.Write(" : ");
+        Log.Write(clientReq->port);
+        Log.Write(" << " + clientReq->request);
+        Log.WriteLn();
+        
+    }
+    return 0;
 }
 
-void WindSock::MessageSend(SOCKET socket, char* buffer, unsigned int bufferSize) {
-    send(socket, buffer, bufferSize, 0);
+
+int Windsock::processRequests(void) {
+    for (unsigned int i=0; i < mClients.size(); i++) {
+        ClientRequest* request = mClients[i];
+        
+        if (!request->isReadyToSend) 
+            continue;
+        
+        std::cout << request->ipaddress << " return   " << request->request << "\n";
+        
+        // Log the incoming connection request
+        Log.Write(request->ipaddress);
+        Log.Write(" : ");
+        Log.Write(request->port);
+        Log.Write(" >> " + request->request);
+        Log.WriteLn();
+        
+        // Get mime file type
+        std::string httpResponseBase = GenerateStatusLine("200", IntToString(request->buffer.size()), request->mime, "close");
+        std::string httpResponse = httpResponseBase + request->buffer;
+        
+        // Send response
+        send(request->socket, httpResponse.c_str(), httpResponse.size(), 0);
+        
+        // Terminate the connection
+        closesocket(request->socket);
+        mClients.erase( mClients.begin() + i );
+        
+        break;
+    }
+    return mClients.size();
 }
 
-int WindSock::MessageReceive(SOCKET socket, char* buffer, unsigned int bufferSize) {
-    return recv(socket, buffer, bufferSize, 0);
+
+ClientRequest* Windsock::getClientRequest(unsigned int index) {
+    return mClients[index];
 }
+
+int Windsock::removeClientRequest(unsigned int index) {
+    if (index >= mClients.size()) 
+        return -1;
+    delete(mClients[index]);
+    mClients.erase( mClients.begin() + index );
+    return 0;
+}
+
+unsigned int Windsock::getNumberOfClientRequests(void) {
+    return mClients.size();
+}
+
+
+void Windsock::Shutdown(void) {
+    closesocket(serverSocket);
+    WSACleanup();
+}
+
+std::string Windsock::GenerateStatusLine(std::string statusCode, std::string contentLength, std::string contentType, std::string requestedConnectionState) {
+    std::string headerLine;
+    headerLine  = "HTTP/1.1 "+statusCode+"\r\n";
+    headerLine += "Server: WindSock/0.9.0\r\n";
+    headerLine += "Content-Type: "+contentType+"\r\n";
+    headerLine += "Content-Length: "+contentLength+"\r\n";
+    headerLine += "Connection: "+requestedConnectionState+"\r\n\r\n";
+    return headerLine;
+}
+
+
+
+
+
+std::vector<std::string> split_words(const std::string& input_string) {
+    std::istringstream iss(input_string);
+    std::vector<std::string> words;
+    std::string word;
+    while (iss >> word) {
+        std::transform(word.begin(), word.end(), word.begin(),
+            [](unsigned char c) { return std::tolower(c); });
+        words.push_back(word);
+    }
+    return words;
+}
+
+std::vector<std::string> split_lines(const std::string& input_string) {
+    std::vector<std::string> lines;
+    std::string current_line;
+    for (char c : input_string) {
+        if (c == '\n') {
+            std::transform(current_line.begin(), current_line.end(), current_line.begin(),
+                [](unsigned char ch) { return std::tolower(ch); });
+            lines.push_back(current_line);
+            current_line.clear();
+        } else {
+            current_line += c;
+        }
+    }
+    // Add the last line if it wasn't followed by a newline
+    if (!current_line.empty()) {
+        std::transform(current_line.begin(), current_line.end(), current_line.begin(),
+            [](unsigned char ch) { return std::tolower(ch); });
+        lines.push_back(current_line);
+    }
+    return lines;
+}
+
+bool ends_with(const std::string& value, const std::string& ending) {
+    if (ending.size() > value.size()) return false;
+    return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
+std::string get_mime_type(std::string& filename) {
+    if (ends_with(filename, ".html") || ends_with(filename, ".htm")) return "text/html";
+    if (ends_with(filename, ".jpg") || ends_with(filename, ".jpeg")) return "image/jpeg";
+    if (ends_with(filename, ".css"))   return "text/css";
+    if (ends_with(filename, ".js"))    return "application/javascript";
+    if (ends_with(filename, ".png"))   return "image/png";
+    if (ends_with(filename, ".gif"))   return "image/gif";
+    if (ends_with(filename, ".svg"))   return "image/svg+xml";
+    return "application/octet-stream"; // fallback
+}
+
+
+bool fetch_file(const std::string& filename, std::vector<char>& buffer) {
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    if (!file) 
+        return false;
+    
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    buffer.resize(size);
+    if (!file.read(buffer.data(), size)) 
+        return false;
+    
+    return true;
+}
+
 

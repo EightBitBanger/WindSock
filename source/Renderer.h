@@ -2,8 +2,6 @@
 #define _RENDERER_SERVER_
 
 #include <string>
-#include "codebaselibrary/types.h"
-
 
 
 class HTMLRenderer {
@@ -25,8 +23,10 @@ public:
     void beginTagStyle(std::string tag, std::string color, unsigned int size);
     
     void text(std::string tag, std::string text, unsigned int size);
+    void textMargin(std::string tag, std::string text, unsigned int size, unsigned int margin);
+    
     void link(std::string tag, std::string text, std::string link, std::string color);
-    void image(std::string textLink, unsigned int width, unsigned int height);
+    void image(std::string textLink, unsigned int width, unsigned int height, unsigned int margin);
     
     void endTag(std::string tag);
     void endDiv(void);
@@ -35,10 +35,7 @@ public:
     std::string bufferFlush(void);
     void bufferClear(void);
     
-private:
-    
     std::string buffer;
-    
     
 };
 
